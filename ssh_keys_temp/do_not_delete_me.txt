@@ -1,0 +1,2 @@
+do_not_delete_me.txt
+I'm juste here to be sure that this folder will be traked by mercurial

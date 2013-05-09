@@ -1,0 +1,32 @@
+syntax: glob
+.DS_Store
+*.pyc
+.idea
+*.orig
+*.mo
+*.pot
+.bzr
+.bzrignore
+.project
+.pydevproject
+.settings
+
+; For bootstrap
+bin
+eggs
+parts
+.installed.cfg
+develop-eggs
+downloads
+etc
+
+; For virtualenv 
+bin
+lib
+.Python
+include
+
+; For project
+*.cfg
+*.pub
+ssh_keys_temp/*.pub

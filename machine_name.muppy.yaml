@@ -1,0 +1,19 @@
+muppy:
+    base: muppy-precise64-fr_mac
+    # name that will be given to the vm in virtualbox.
+    # Be aware that it must be unique.
+    # name: rotor
+
+    # number of virtual CPU. Default is base-vm value (usually 1)
+    # vcpu: 1
+
+    # RAM (in MB) allocated to the VM. Default is base-vm value (usually 512)
+    # ram: 4096
+
+    #network:
+        # interface0:
+            # network-mode nat | bridge. Default is base-vm value (usually nat)
+            # network-mode: nat
+
+            # mac-address: <enter a mac address> Default is vm generated value (eg. 0800277F6FA3)
+
