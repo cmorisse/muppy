@@ -14,8 +14,8 @@ if not env.get('config_file', False):
     print blue("Launching muppy version %s" % __version__)
     print ""
     print red("ERROR: config_file parameter is mandatory.")
-    print orange("Please launch with:")
-    print orange("  fab --set config_file=your_file.cfg")
+    print red("Please launch with:")
+    print red("  fab --set config_file=your_file.cfg")
     print 
     exit(0)
 
@@ -43,6 +43,7 @@ class bitbucket:
     pass
 
 if config_parser.has_section('bitbucket'):
+    bitbucket.protocol = config_parser.get('bitbucket', 'protocol') 
     bitbucket.user = config_parser.get('bitbucket', 'user')
     bitbucket.password = config_parser.get('bitbucket', 'password')
 
@@ -53,6 +54,17 @@ if config_parser.has_section('bitbucket'):
 else:
     print red("Error: [bitbucket] configuration missing in fabfile.cfg")
     exit(-1)
+
+
+def ping(root_user=env.root_user, root_password=env.root_password):
+    """
+    Test a run ls then a sudo ls
+    """
+    env.user = root_user
+    env.password = root_password
+    run("ls /") 
+    sudo("ls /")   
+    return
 
 
 #
@@ -162,7 +174,7 @@ def sys_install_openerp_prerequisites(root_user=env.root_user, root_password=env
     print green("OpenERP prerequisites installed.")
 
 
-def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_password):
+def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_password, phase_1=True):
     """
     Create openerp admin (non root) user (run as root_user)
     """
@@ -170,7 +182,7 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
     env.password = root_password
 
     # We create the user
-    if True:
+    if phase_1:
         #sudo("useradd -m -s /bin/bash -g sudo %s" % (env.adm_user,))
         #sudo("useradd -m -s /bin/bash --system --group openerp %s" % (env.adm_user,))
         sudo("useradd -m -s /bin/bash --system %s" % (env.adm_user,))
@@ -266,16 +278,21 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
     env.password = adm_password
 
     # On ajoute la clef SSH de bitbucket dans les known_hosts
-    if exists("~/.ssh/known_hosts"):
-        run("ssh-keygen -R bitbucket.org")
-    run("ssh-keyscan -t rsa bitbucket.org >> ~/.ssh/known_hosts")
+    if bitbucket.protocol=='ssh':
+        if exists("~/.ssh/known_hosts"):
+            run("ssh-keygen -R bitbucket.org")
+        run("ssh-keyscan -t rsa bitbucket.org >> ~/.ssh/known_hosts")
 
     # we clone the appserver repo after removing it if it exists.
     customer_path = "/opt/openerp/%s" % (env.customer_directory,)
     repository_path = "%s/%s" % (customer_path, bitbucket.appserver_repository,) 
     if exists(repository_path):
         run("rm -rf %s" % (repository_path,))
-    run("hg clone -y ssh://hg@bitbucket.org/%s/%s %s" % (bitbucket.appserver_user, bitbucket.appserver_repository, repository_path,))
+
+    if bitbucket.protocol == 'ssh':
+        run("hg clone -y ssh://hg@bitbucket.org/%s/%s %s" % (bitbucket.appserver_user, bitbucket.appserver_repository, repository_path,))
+    else:
+        run("hg clone -y https://%s:%s@bitbucket.org/%s/%s %s" % (bitbucket.user, bitbucket.password, bitbucket.appserver_user, bitbucket.appserver_repository, repository_path,))
 
     # we create buildout.cfg by copying template
     buildout_cfg_path = "%s/buildout.cfg" % (repository_path, )
@@ -285,7 +302,8 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
     sed(buildout_cfg_path, "\{\{pg_password\}\}", sed_escape(env.pg_password))
     sed(buildout_cfg_path, "\{\{openerp_admin_password\}\}", sed_escape(env.openerp_admin_password))
 
-    print green("appserver cloned")
+    print green("Bitbucket repository \"%s\" cloned" % bitbucket.appserver_repository)
+    return
 
 
 def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_password):
@@ -344,7 +362,7 @@ def install_openerp_application_server():
     reboot()
 
 
-def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, phase_4=True, phase_5=True):
+def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, phase_4=True, phase_5=True, phase_6=True):
     """
     Install a complete OpenERP appserver (including database server).
     """
@@ -355,27 +373,31 @@ def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, 
         sys_update_upgrade()  # Warning update on VMware imply to resinstall tools
     
     #
-    # Phase 2 : System packages
+    # Phase 2 : PostgreSQL
     if phase_2:
         pg_install_server()
         pg_create_openerp_user()
+
+    #
+    # Phase 3 : System packages
+    if phase_3:
         sys_install_openerp_prerequisites()
 
     #
-    # Phase 3 : OpenERP user, and directories (/var/run, /var/log)
-    if phase_3:
+    # Phase 4 : OpenERP user, and directories (/var/run, /var/log)
+    if phase_4:
         sys_create_openerp_user()
         sys_create_directories()
 
     #
-    # Phase 4 : OpenERP user, software and system configuration
-    if phase_4:
+    # Phase 5 : OpenERP user, software and system configuration
+    if phase_5:
         openerp_clone_appserver()
         openerp_bootstrap_appserver()
         
     #
-    # Phase 5 : Setup init scripts
-    if phase_5:
+    # Phase 6 : Setup init scripts
+    if phase_6:
         openerp_create_services()
 
     reboot()
@@ -388,8 +410,8 @@ def stop_openerp_service():
     backup_user = env.user
     backup_password = env.password
 
-    env.user = root_user
-    env.password = root_password        
+    env.user = env.root_user
+    env.password = env.root_password        
     sudo('/etc/init.d/openerp-server stop')
 
     env.user = backup_user
@@ -404,14 +426,13 @@ def start_openerp_service():
     backup_user = env.user
     backup_password = env.password
 
-    env.user = root_user
-    env.password = root_password        
+    env.user = env.root_user
+    env.password = env.root_password        
     sudo('/etc/init.d/openerp-server start')
 
     env.user = backup_user
     env.password = backup_password 
     print green("openerp-server started")
-
 
 
 def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, update_database=None):

@@ -1,3 +1,3 @@
-virtualenv --no-site-packages pyenv
-source pyenv/bin/activate
-pip install -r system-builder.req
+virtualenv --no-site-packages .
+source bin/activate
+pip install -r muppy.pip
