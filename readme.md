@@ -1,9 +1,16 @@
-Titre
+Muppy
 =====
 
-Roadmap:
+A set of python fabric functions to make your OpenERP 7 Servers behave as muppets !
 
-* Mettre en place un repertoire tmp purgé à la fin du script
-* Ajouter SSH 2 step Auth
-* Où définir les mots de passe ???? (Travailler avec des clefs?)
-* Packager comme une commande shell
+Muppy is released with an MIT Licence.
+
+Muppy is undocumented right now, but this is next on my todo list.
+
+
+Roadmap
+_______
+
+* Document 
+* Add SSH 2 step Authentication with Google Authenticators
+* Repackage as an idendendant comman line utility
