@@ -3,14 +3,19 @@
 # -----------------------
 # This script:
 #   - sets up a Ubuntu / Debian VM to run with vagrant.
-#   - is derived from vagrant postinstall.sh found in som box
+#   - is derived from vagrant postinstall.sh found in some boxes
+#
+# Usage:
+# This script must be launch:
+#   - via sudo
+#   
+# 
 
 echo "Mount VirtualBox Guest Additions then press [Enter]"
 read dummy_var
 
 # Run the script in debug mode
 set -x
-
 
 ### Setup Variables
 
@@ -117,10 +122,10 @@ echo "PATH=\$PATH:${ruby_home}/bin" >/etc/profile.d/vagrant_ruby.sh
 echo "Installing Vagrant SSH public key"
 vssh="/home/${account}/.ssh"
 mkdir -p $vssh
+chown -R ${account}:vagrant $vssh
 chmod 700 $vssh
 (cd $vssh && wget --no-check-certificate 'https://raw.github.com/mitchellh/vagrant/master/keys/vagrant.pub' -O $vssh/authorized_keys)
 chmod 0600 $vssh/authorized_keys
-chown -R ${account}:vagrant $vssh
 unset vssh
 
 
