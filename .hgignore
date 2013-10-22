@@ -10,6 +10,7 @@ syntax: glob
 .project
 .pydevproject
 .settings
+todelete/
 
 ; For bootstrap
 bin

@@ -42,6 +42,11 @@ class _bitbucket:
     pass
 
 if config_parser.has_section('bitbucket'):
+    if config_parser.has_option('bitbucket', 'repository_type'):
+        _bitbucket.repository_type = config_parser.get('bitbucket', 'repository_type')
+    else:
+        _bitbucket.repository_type = 'hg'
+
     _bitbucket.protocol = config_parser.get('bitbucket', 'protocol') 
     _bitbucket.user = config_parser.get('bitbucket', 'user')
     _bitbucket.password = config_parser.get('bitbucket', 'password')
@@ -56,10 +61,8 @@ else:
     exit(-1)
 
 
-def ping(root_user=env.root_user, root_password=env.root_password):
-    """
-    Test a run ls then a sudo ls
-    """
+def mupping(root_user=env.root_user, root_password=env.root_password):
+    """Mup.py "ping": try to run ls then sudo ls over ssh"""
     env.user = root_user
     env.password = root_password
     run("ls /") 
@@ -197,6 +200,7 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
         res = requests.post("https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (_bitbucket.appserver_user, _bitbucket.appserver_repository,),
                             auth=(_bitbucket.user, _bitbucket.password),
                             data=data)
+        
         assert res.status_code == requests.codes.ok, "Error: Unable to upload deployment key to bitbucket.org"
         print green("Deployment key (%s) successfully generated and uploaded to bitbucket." % data['label'])
 
@@ -266,10 +270,17 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
     if exists(repository_path):
         run("rm -rf %s" % (repository_path,))
 
-    if _bitbucket.protocol == 'ssh':
-        run("hg clone -y ssh://hg@bitbucket.org/%s/%s %s" % (_bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
+    if _bitbucket.repository_type == 'hg':
+        if _bitbucket.protocol == 'ssh':
+            run("hg clone -y ssh://hg@bitbucket.org/%s/%s %s" % (_bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
+        else:
+            run("hg clone -y https://%s:%s@bitbucket.org/%s/%s %s" % (_bitbucket.user, _bitbucket.password, _bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
     else:
-        run("hg clone -y https://%s:%s@bitbucket.org/%s/%s %s" % (_bitbucket.user, _bitbucket.password, _bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
+        # So Let's git it
+        if _bitbucket.protocol == 'ssh':
+            run("git clone git@bitbucket.org:%s/%s %s" % (_bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
+        else:
+            run("git clone https://%s:%s@bitbucket.org/%s/%s %s" % (_bitbucket.user, _bitbucket.password, _bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
 
     # Create buildout.cfg by copying template
     buildout_cfg_path = "%s/buildout.cfg" % (repository_path, )
@@ -335,7 +346,7 @@ def install_openerp_application_server():
 def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, phase_4=True, phase_5=True, phase_6=True):
     """Install a complete OpenERP appserver (including database server). You must update/upgrade system before manually"""
     
-    #phase_1 = phase_2 = phase_3 = False
+    #phase_1 = phase_2 = phase_3 = phase_4 = phase_5 = phase_6 = False
     
     # Install PostgreSQL
     if phase_1:
