@@ -330,6 +330,25 @@ def openerp_create_services(root_user=env.root_user, root_password=env.root_pass
 
     print green("OpenERP services created.")
 
+def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.root_password):
+    """Stop server, remove init-script links, delete system scripts"""
+    env.user = root_user
+    env.password = root_password
+
+    # Now stopping service
+    print blue("Stopping openerp service...")
+    sudo('/etc/init.d/openerp-server stop')
+    sudo('/etc/init.d/gunicorn-openerp stop')
+
+    print blue("Removing init script links...")
+    sudo('update-rc.d -f gunicorn-openerp remove')
+    sudo('update-rc.d -f openerp-server remove')
+
+    print blue("Deleting init.d scipts file...")
+    sudo('rm /etc/init.d/openerp-server')
+    sudo('rm /etc/init.d/gunicorn-openerp')
+
+    print green("OpenERP init scipts removed.")
 
 def install_openerp_application_server():
     """Install an OpenERP application server (without database)."""
