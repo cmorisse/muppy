@@ -4,6 +4,7 @@ from fabric.contrib.files import upload_template, exists, sed
 from fabric.colors import *
 import ConfigParser
 import requests
+from datetime import date
 
 __version__ = '0.1 alpha'
 
@@ -219,11 +220,50 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
                 else:
                     print red("%s is not a valid repository name!" % repo)
 
-def sys_create_directories(root_user=env.root_user, root_password=env.root_password):
-    """Create Customer directory (/opt/openerp/<customer>) and openerp server log directory ( /var/log/openerp ) and grant rights to adm_user""" 
+def sys_update_deployment_key(root_user=env.root_user, root_password=env.root_password):
+    """Retrieve user ssh key and upload it as a deployment key on all repositories (main and other privates)."""
+    env.user = root_user
+    env.password = root_password
+
+    # TODO: use a ./tmp directory to store working files
+    env.user = env.adm_user
+    env.password = env.adm_password
+    ssh_key_temp_file_name = '%s_%s_id_rsa.pub' % (_bitbucket.appserver_repository, env.adm_user,)
+    get('/home/%s/.ssh/id_rsa.pub' % (env.adm_user,), 'ssh_keys_temp/%s' % (ssh_key_temp_file_name,))
+
+    ssh_key_file = open('ssh_keys_temp/%s' % (ssh_key_temp_file_name,))
+    data = {
+        'label': 'muppy:%s@%s' % (env.adm_user, env.host,),
+        'key': ssh_key_file.read()
+    }
+
+    # Upload the key to bitbucket.org as a deployment (readonly) key on the app-server repository
+    # TODO: test if key exists before generating a new one or delete existing keys
+    res = requests.post("https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (_bitbucket.appserver_user, _bitbucket.appserver_repository,),
+                        auth=(_bitbucket.user, _bitbucket.password),
+                        data=data)
+    
+    assert res.status_code == requests.codes.ok, "Error: Unable to upload deployment key to bitbucket.org"
+    print green("Deployment key (%s) successfully generated and uploaded to bitbucket." % data['label'])
+
+    # Upload the key to all others private repos
+    # TODO: Infer this list from the buildout.cfg addons key 
+    for repo in _bitbucket.other_private_repositories:
+        if repo:
+            user, repository = repo.split('/')
+            if user and repository:
+                res = requests.post("https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (user, repository,),
+                                    auth=(_bitbucket.user, _bitbucket.password),
+                                    data=data)
+                assert res.status_code == requests.codes.ok, "Error: Unable to upload deployment key to bitbucket.org"
+                print green("Deployment key (%s) successfully uploaded to repository :%s" % (data['label'], repository))
+            else:
+                print red("%s is not a valid repository name!" % repo)
+
+def sys_create_customer_directory(root_user=env.root_user, root_password=env.root_password):
+    """Create Customer directory (/opt/openerp/<customer>) owned by adm_user""" 
     # Create :
     #   - Customer directory (/opt/openerp/<customer>) that will hold all subprojects related to this server.
-    #   - Openerp log directory
     #  Grant rights only to adm_user (run as root_user)
     env.user = root_user
     env.password = root_password
@@ -234,12 +274,19 @@ def sys_create_directories(root_user=env.root_user, root_password=env.root_passw
     sudo("chown -R %s: %s" % (env.adm_user, customer_path,))
     print green("Directory %s created." % customer_path )
 
-    # Now we create openerp log directory
+def sys_create_log_directory(root_user=env.root_user, root_password=env.root_password):
+    """Create openerp server log directory ( /var/log/openerp ) and grant rights to adm_user""" 
+    # Create :
+    #   - Openerp log directory
+    #  Grant rights only to adm_user (run as root_user)
+    env.user = root_user
+    env.password = root_password
+
+    print blue("Creating openerp log directory (/var/log/openerp) and grant adm_user rights to it")
     sudo('mkdir -p /var/log/openerp')
     sudo('chown -R %s:root /var/log/openerp' % (env.adm_user,))
     sudo('chmod 775 /var/log/openerp')
     print green("OpenERP log directory: \"/var/log/openerp/\" created.")
-
 
 #
 # OpenERP related tasks
@@ -249,7 +296,7 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
     # appserver must hast been created after http://bitbucket.org/cmorisse/template-appserver-v7
 
     def sed_escape(s):
-        """Utility to preserve special characters in password  during sed(ing) of buildout.cfg"""
+        """Utility to preserve special characters in password during sed(ing) of buildout.cfg"""
         t1 = s.replace("\\", "\\\\")
         t2 = t1.replace("/", "\\/")
         t3 = t2.replace("&", "\&")
@@ -261,8 +308,8 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
     # Add bitbucket SSH key in known_hosts on remote server
     if _bitbucket.protocol=='ssh':
         if exists("~/.ssh/known_hosts"):
-            run("ssh-keygen -R bitbucket.org")
-        run("ssh-keyscan -t rsa bitbucket.org >> ~/.ssh/known_hosts")
+            run("ssh-keygen -R bitbucket.org")  # Remove host from known_hosts file
+        run("ssh-keyscan -t rsa bitbucket.org >> ~/.ssh/known_hosts")  # Add bitbucket.org in known host
 
     # Remove appserver repo if it exists then clone the appserver repo 
     customer_path = "/opt/openerp/%s" % (env.customer_directory,)
@@ -330,6 +377,8 @@ def openerp_create_services(root_user=env.root_user, root_password=env.root_pass
 
     print green("OpenERP services created.")
 
+
+
 def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.root_password):
     """Stop server, remove init-script links, delete system scripts"""
     env.user = root_user
@@ -382,9 +431,9 @@ def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, 
 
     # Create directories (/opt/openerp/customer, /var/log)
     if phase_4:
-        sys_create_directories()
+        sys_create_customer_directory()
+        sys_create_log_directory()
 
-    # OpenERP user, software and system configuration
     if phase_5:
         openerp_clone_appserver()
         openerp_bootstrap_appserver()
@@ -395,6 +444,27 @@ def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, 
 
     reboot()
 
+def openerp_archive_appserver(root_user=env.root_user, root_password=env.root_password):
+    """Move achive the appserver directory into a directory named appserver.archived_YYYY-MM-DD"""
+    env.user = root_user
+    env.password = root_password
+    customer_path = "/opt/openerp/%s" % (env.customer_directory,)
+    repository_path = "%s/%s" % (customer_path, _bitbucket.appserver_destination_directory or _bitbucket.appserver_repository,) 
+
+    sudo('rm -rf %s.achived_%s' % (repository_path, date.today()))
+    sudo('mv %s %s.achived_%s' % (repository_path, repository_path, date.today(),))
+
+
+def openerp_reinstall_appserver(phase_1=True, phase_2=True, phase_3=True, phase_4=True, phase_5=True, phase_6=True):
+    """Re-install OpenERP appserver"""
+
+    #TODO: check pre requisites: deployement key uploaded
+    openerp_remove_init_script_links()
+    openerp_archive_appserver()
+    openerp_clone_appserver()
+    openerp_bootstrap_appserver()
+    openerp_create_services()
+    reboot()
 
 def stop_openerp_service():
     """Stop openerp service"""

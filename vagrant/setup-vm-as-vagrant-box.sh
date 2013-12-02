@@ -19,12 +19,6 @@ set -x
 
 ### Setup Variables
 
-# The version of Ruby to be installed supporting the Chef and Puppet gems
-ruby_ver="1.8.7-p358"
-
-# The base path to the Ruby used for the Chef and Puppet gems
-ruby_home="/opt/vagrant_ruby"
-
 # The non-root user that will be created. By vagrant conventions, this should
 # be `"vagrant"`.
 account="vagrant"
@@ -86,33 +80,6 @@ case "$platform" in
     apt-get -y install build-essential zlib1g-dev libssl-dev libreadline-dev make curl git-core
     ;;
 esac
-
-# Use ruby-build to install Ruby
-clone_dir=/tmp/ruby-build-$$
-git clone https://github.com/sstephenson/ruby-build.git $clone_dir
-$clone_dir/bin/ruby-build "$ruby_ver" "$ruby_home"
-rm -rf $clone_dir
-unset clone_dir
-
-### Installing Chef and Puppet Gems
-
-# Install prerequisite gems used by Chef and Puppet
-${ruby_home}/bin/gem install polyglot net-ssh-gateway mime-types --no-ri --no-rdoc
-
-# The Vagrant base box
-# [documentation](http://vagrantup.com/docs/base_boxes.html#boot_and_setup_basic_software)
-# specifies that both the Puppet and Chef gems should be installed to qualify
-# as a complete Vagrant base box.
-${ruby_home}/bin/gem install chef --no-ri --no-rdoc
-${ruby_home}/bin/gem install puppet --no-ri --no-rdoc
-
-# Add the Puppet group so Puppet runs without issue
-groupadd puppet
-
-# If a packaged Ruby or RVM is installed then the path to the Chef and Puppet
-# binaries will be "lost". To guard against this, we'll add the compiled Ruby's
-# bin directory to PATH.
-echo "PATH=\$PATH:${ruby_home}/bin" >/etc/profile.d/vagrant_ruby.sh
 
 ### Vagrant SSH Keys
 
