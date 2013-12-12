@@ -163,9 +163,8 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
     env.user = root_user
     env.password = root_password
 
-
     # Create the user ; he can be sudoer or not depending on the adm_user_is_sudoer config 
-    if True:
+    if False:
         if env.adm_user_is_sudoer:
             sudo("useradd -m -s /bin/bash --system --group sudo %s" % (env.adm_user,))
             #sudo("useradd -m -s /bin/bash --system --group openerp %s" % (env.adm_user,))
@@ -177,7 +176,7 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
         sudo("rm pw.tmp")
         print green("User \"%s\" created." % env.adm_user)
 
-    if True:
+    if False:
         # Generate a ssh key and package it 
         env.user = env.adm_user
         env.password = env.adm_password
@@ -415,7 +414,7 @@ def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, 
     """Install a complete OpenERP appserver (including database server). You must update/upgrade system before manually"""
     
     #phase_1 = phase_2 = phase_3 = phase_4 = phase_5 = phase_6 = False
-    
+        
     # Install PostgreSQL
     if phase_1:
         pg_install_server()
@@ -494,28 +493,38 @@ def start_openerp_service():
     env.password = backup_password 
     print green("openerp-server started")
 
-def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, update_database=None):
-    """buildout the appserver, update the database (identified by the update_database parameter) and addons_list then restart the openerp service"""
+def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, database=None):
+    """buildout the appserver, update the database and addons_list then restart the openerp service. eg. update_appserver:database=sido_dev"""
     env.user = adm_user
     env.password = adm_password
 
     appserver_path ="/opt/openerp/%s/%s" % (env.customer_directory, _bitbucket.appserver_repository)
 
+    print blue("\"Stopping\" server")
+    stop_openerp_service()
+
+    print blue("\"Updating\" appserver repository")
+    with cd(appserver_path):
+        if _bitbucket.repository_type == "git":
+            run('git pull origin master')
+        else:  # Hg rocks
+            run('hg pull')
+            run('hg update')
+
     # TODO: Identify running server (gunicorn or classical openerp) 
     print blue("\"Buildouting\" server")
     with cd(appserver_path):
-        stop_openerp_service()
         run('bin/buildout')
-        if update_database and env.addons_list:
-            run('bin/start_openerp -d %s -u %s --stop-after-init' % (update_database, env.addons_list,))
+        if database and env.addons_list:
+            run('bin/start_openerp -d %s -u %s --stop-after-init' % (database, env.addons_list,))
             print green("OpenERP server updated:")
             print green("  - modules=%s" % env.addons_list)
-            print green("  - database=%s" % update_database)
+            print green("  - database=%s" % database)
         else:
             print red("No database update:")
             if not env.addons_list:
                 print red("  - no addons specified in env.addons_list")
-            if not update_database:
+            if not database:
                 print red("  - no database specified via update_database parameter")
     
         start_openerp_service()
