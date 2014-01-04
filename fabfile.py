@@ -1,12 +1,13 @@
 # coding: utf8
+import os
 from fabric.api import *
 from fabric.contrib.files import upload_template, exists, sed
 from fabric.colors import *
 import ConfigParser
 import requests
-from datetime import date
+import datetime
 
-__version__ = '0.1 beta'
+__version__ = '0.2-alpha'
 
 # TODO: Installation JasperReport Server
 
@@ -39,27 +40,55 @@ env.addons_list = config_parser.get('env', 'addons_list')
 
 # TODO: expand bash vars for password
 
-class _bitbucket:
+
+class _AppserverRepository:
     pass
 
-if config_parser.has_section('bitbucket'):
-    if config_parser.has_option('bitbucket', 'repository_type'):
-        _bitbucket.repository_type = config_parser.get('bitbucket', 'repository_type')
-    else:
-        _bitbucket.repository_type = 'hg'
 
-    _bitbucket.protocol = config_parser.get('bitbucket', 'protocol') 
-    _bitbucket.user = config_parser.get('bitbucket', 'user')
-    _bitbucket.password = config_parser.get('bitbucket', 'password')
+def parse_appserver_url(url):
+    dvcs, clone_url, destination_directory, version = url.split(' ')
+    return dvcs, clone_url, destination_directory, version,
 
-    _bitbucket.appserver_user = config_parser.get('bitbucket', 'appserver_user')    
-    _bitbucket.appserver_repository = config_parser.get('bitbucket', 'appserver_repository')
-    _bitbucket.appserver_destination_directory = config_parser.get('bitbucket', 'appserver_destination_directory')
 
-    _bitbucket.other_private_repositories = config_parser.get('bitbucket', 'other_private_repositories').split(',')
+
+if config_parser.has_section('appserver_repository'):
+    _AppserverRepository.server_type = config_parser.get('appserver_repository', 'server_type')
+    if _AppserverRepository.server_type not in ('gitlab', 'bitbucket'):
+        print red("Error: Unsupported value for appserver_repository.server_type : %s" % _AppserverRepository.server_type)
+        exit(-1)
+
+    raw_appserver_url = config_parser.get('appserver_repository', 'appserver_url')
+
+    dvcs, clone_url, appserver_owner, appserver_repository, destination_directory, version = parse_appserver_url(raw_appserver_url)
+
+    _AppserverRepository.dvcs = config_parser.get('appserver_repository', 'dvcs')
+    if _AppserverRepository.type not in ('git', 'hg'):
+        print red("Error: Incorrect value for appserver_repository.dvcs : %s" % _AppserverRepository.dvcs)
+        exit(-1)
+
+    _AppserverRepository.protocol = config_parser.get('appserver_repository', 'protocol')
+    if _AppserverRepository.type not in ('ssh', 'https'):
+        print red("Error: Incorrect value for appserver_repository.protocol : %s" % _AppserverRepository.protocol)
+        exit(-1)
+
+    user = config_parser.get('appserver_repository', 'user')
+    _AppserverRepository.user = eval(user, {'os': os})
+
+    password = config_parser.get('appserver_repository', 'password')
+    _AppserverRepository.password = eval(password, {'os': os})
+
+    _AppserverRepository.appserver_owner = config_parser.get('appserver_repository', 'appserver_owner')
+    _AppserverRepository.appserver_repository = config_parser.get('appserver_repository', 'appserver_repository')
+    _AppserverRepository.appserver_destination_directory = config_parser.get('appserver_repository', 'appserver_destination_directory')
+
+    _AppserverRepository.other_private_repositories = config_parser.get('appserver_repository', 'other_private_repositories').split(',')
 else:
-    print red("Error: [bitbucket] configuration missing in config file")
+    print red("Error: [appserver_repository] section missing in config file")
     exit(-1)
+
+
+
+
 
 
 def mupping(root_user=env.root_user, root_password=env.root_password):
@@ -80,7 +109,7 @@ def pg_install_server(root_user=env.root_user, root_password=env.root_password):
     env.password = root_password
     
     sudo('apt-get update --fix-missing')
-    sudo('apt-get install -y vim gcc python-setuptools postgresql graphviz postgresql-client libyaml-0-2')
+    sudo('apt-get install -y postgresql graphviz postgresql-client')
     print green("PosgreSQL server and client installed.")
 
 def pg_create_openerp_user(pg_user=env.pg_user, pg_password=env.pg_password):
@@ -150,12 +179,20 @@ def sys_install_openerp_prerequisites(root_user=env.root_user, root_password=env
     env.user = root_user
     env.password = root_password
 
-    sudo("apt-get install -y python-dev")
-    sudo("apt-get install -y libldap2-dev libxslt1-dev libsasl2-dev libjpeg62 libjpeg62-dev libfreetype6-dev liblcms2-dev liblcms1-dev")
-    sudo("apt-get install -y postgresql-client libpq-dev python-psycopg2")
-    sudo("apt-get install -y python-markupsafe python-imaging python-libxml2 python-dateutil python-feedparser python-gdata python-ldap python-libxslt1 python-lxml python-mako python-openid python-pybabel python-pychart python-pydot python-pyparsing python-reportlab python-simplejson python-vatnumber python-vobject python-tz python-webdav python-werkzeug python-yaml python-xlwt python-zsi")
-    sudo("apt-get install -y bzr python-bzrlib mercurial git python-virtualenv python-pip vim curl")
-    sudo("apt-get install -y htop")
+    sudo('wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py')
+    sudo('python ez_setup.py')
+    sudo('rm ez_setup.py')
+
+    sudo("apt-get install -y python-dev libz-dev")
+    sudo("apt-get install -y bzr mercurial git python-virtualenv vim")
+    sudo("apt-get install -y libxml2-dev libxslt1-dev")
+    sudo("apt-get install -y libpq-dev")
+    sudo("apt-get install -y libldap2-dev libsasl2-dev")
+    sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev liblcms1-dev libwebp-dev libtiff-dev")
+    sudo("apt-get install -y libyaml-dev")
+
+    sudo("apt-get install -y curl htop")
+
     print green("OpenERP prerequisites installed.")
 
 def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_password):
@@ -164,7 +201,7 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
     env.password = root_password
 
     # Create the user ; he can be sudoer or not depending on the adm_user_is_sudoer config 
-    if False:
+    if True:
         if env.adm_user_is_sudoer:
             sudo("useradd -m -s /bin/bash --system --group sudo %s" % (env.adm_user,))
             #sudo("useradd -m -s /bin/bash --system --group openerp %s" % (env.adm_user,))
@@ -176,7 +213,7 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
         sudo("rm pw.tmp")
         print green("User \"%s\" created." % env.adm_user)
 
-    if False:
+    if True:
         # Generate a ssh key and package it 
         env.user = env.adm_user
         env.password = env.adm_password
@@ -450,8 +487,8 @@ def openerp_archive_appserver(root_user=env.root_user, root_password=env.root_pa
     customer_path = "/opt/openerp/%s" % (env.customer_directory,)
     repository_path = "%s/%s" % (customer_path, _bitbucket.appserver_destination_directory or _bitbucket.appserver_repository,) 
 
-    sudo('rm -rf %s.achived_%s' % (repository_path, date.today()))
-    sudo('mv %s %s.achived_%s' % (repository_path, repository_path, date.today(),))
+    sudo('rm -rf %s.achived_%s' % (repository_path, datetime.date.today()))
+    sudo('mv %s %s.achived_%s' % (repository_path, repository_path, datetime.date.today(),))
 
 
 def openerp_reinstall_appserver(phase_1=True, phase_2=True, phase_3=True, phase_4=True, phase_5=True, phase_6=True):
@@ -493,6 +530,7 @@ def start_openerp_service():
     env.password = backup_password 
     print green("openerp-server started")
 
+
 def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, database=None):
     """buildout the appserver, update the database and addons_list then restart the openerp service. eg. update_appserver:database=sido_dev"""
     env.user = adm_user
@@ -532,3 +570,17 @@ def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, datab
 
 
 
+#
+# Vagrant
+#
+# Update Virtualbox additions
+#
+# sudo apt-get -y install build-essential zlib1g-dev libssl-dev libreadline-dev make curl git-core
+# sudo apt-get -y install linux-headers-server
+# Mount VirtualBox Additions and install it
+# mount /dev/cdrom /mnt
+# sudo /mnt/VBoxLinuxAdditions.run
+# sudo umount /mnt
+
+# Remove the linux headers to keep things pristine
+# sudo apt-get -y remove linux-headers-server
