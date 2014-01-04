@@ -6,7 +6,7 @@ import ConfigParser
 import requests
 from datetime import date
 
-__version__ = '0.1 alpha'
+__version__ = '0.1 beta'
 
 # TODO: Installation JasperReport Server
 
