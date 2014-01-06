@@ -34,21 +34,192 @@ env.adm_user_is_sudoer = config_parser.get('env', 'adm_user_is_sudoer')
 env.pg_user = config_parser.get('env', 'pg_user')
 env.pg_password = config_parser.get('env', 'pg_password')
 env.system_suffix = config_parser.get('env', 'system_suffix')
+
 env.customer_directory = config_parser.get('env', 'customer_directory')
+env.customer_path = "/opt/openerp/%s" % (env.customer_directory,)
+
 env.openerp_admin_password = config_parser.get('env', 'openerp_admin_password')
 env.addons_list = config_parser.get('env', 'addons_list')
 
-# TODO: expand bash vars for password
-
+# TODO: eval root, adm, pg, postgres, user and password from os.environ
 
 class _AppserverRepository:
     pass
 
 
-def parse_appserver_url(url):
-    dvcs, clone_url, destination_directory, version = url.split(' ')
-    return dvcs, clone_url, destination_directory, version,
+class Repository(object):
+    def __init__(self, user, password, url, base_path):
+        self.dvcs, self.clone_url, self.destination_directory, self.version, self.name, \
+        self.owner, self.protocol = Repository.parse_appserver_url(url)
 
+        self.user = user
+        self.password = password
+
+        self.base_path = base_path
+
+    @staticmethod
+    def parse_appserver_url(url):
+        """
+        Accept a appserver_url of the form: {dvcs} {clone_url} [destination_directory] [version]
+        :returns a list of 7 elements:
+        [
+            dvcs,
+            clone_url,
+            destination_directory,
+            version,
+            repository_name,
+            owner_name,
+            protocol
+        ]
+        """
+        ret_list = [None] * 7  # Create a list of 7 None elements
+    
+        url_components = url.split(' ')
+        ret_list[0:len(url_components)] = url_components  # Feed what we can
+    
+        if ret_list[0] not in ('git', 'hg'):
+            print red("Error: unsupported dvcs : %s. Must be 'hg' or 'git'." % ret_list[0])
+    
+        # we extrace repository name from url
+        if ret_list[0] == 'git':
+            if ret_list[1].startswith('git'):
+                owner_name = ret_list[1].split(':')[1].split('/')[0]
+                repository_name = ret_list[1].split(':')[1].split('/')[-1][:-4]
+            else:
+                # https
+                owner_name = ret_list[1].split('/')[-2]
+                repository_name = ret_list[1].split('/')[-1][:-4]
+        else:
+            # mercurial
+            owner_name = ret_list[1].split('/')[-2]
+            repository_name = ret_list[1].split('/')[-1]
+    
+        ret_list[4] = repository_name
+        ret_list[5] = owner_name
+    
+        # protocol
+        protocol_prefix = ret_list[1][:3]
+        ret_list[6] = 'ssh' if protocol_prefix in ('git', 'ssh',) else 'https'
+
+        # let destination_directory to repository_name if undefined
+        ret_list[2] = ret_list[2] or ret_list[4]
+
+        return ret_list
+
+    @property
+    def hostname(self):
+        if self.clone_url.startswith('git'):
+            return self.clone_url.split(':')[0].split('@')[1]
+        elif self.clone_url.startswith('http'):
+            subs = self.clone_url.split('//')[1].split('/')[0]
+            if subs.find('@') > 0:
+                return subs.split('@')[1]
+            return subs
+        elif self.clone_url.startswith('ssh'):
+            return self.clone_url.split('//')[1].split('/')[0].split('@')[1]
+        return ''
+
+    @property
+    def path(self):
+        return os.path.join(self.base_path, self.destination_directory)
+
+
+class BitbucketRepository(Repository):
+
+    def __init__(self, user, password, url, base_path):
+        super(BitbucketRepository, self).__init__(user, password, url, base_path)
+
+    def search_deployment_key(self, key_name=''):
+        if not key_name:
+            return []
+        url = "https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (self.owner, self.name)
+        response = requests.get(url, auth=(self.user, self.password))
+        if response.status_code != requests.codes.ok:
+            return []
+
+        key_list = response.json()
+        result = [key['pk'] for key in key_list if str(key['label']) == key_name]
+        return result
+
+    def post_deployment_key(self, key_name, key_string):
+        """
+        Upload a deployment key to repo
+        :param key_name: Name of the key to upload (bitbucket's label).
+        :type key_name: str
+        :param key_string: SSH Key
+        :type key_string: str
+        :return: True or False
+        :rtype: boolean
+        """
+        url = "https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (self.owner, self.name,)
+        auth = (self.user, self.password,)
+        data = {
+            'label': key_name,
+            'key': key_string
+        }
+        res = requests.post(url, auth=auth, data=data)
+        if res.status_code != requests.codes.ok:
+            print red("Error: Unable to upload deployment key to bitbucket.")
+            return False
+        return True
+
+    def delete_deployment_key(self, pk):
+        """
+        Delete deployment key
+        :param pk: a bitbucket pk
+        :type pk: str or int
+        :return: True or False
+        :rtype: boolean
+        """
+        url = "https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/%s" % (self.owner, self.name, pk)
+        auth = (self.user, self.password,)
+        response = requests.delete(url, auth=auth)
+        if response.status_code != 204:  # Bitbucket : WTF 204 ?? !!!!
+            return False
+        return True
+
+    def update_deployment_key(self, key_name, key_string):
+        """
+        Delete existing deployment keys named as key_name, then upload a new one
+        :param key_name: Name of the key to update (bitbucket's label).
+        :type key_name: str
+        :param key_string: SSH Key
+        :type key_string: str
+        :return: True or False
+        :rtype: boolean
+        """
+        # for update, we don't bother if key do not exists
+        keys = self.search_deployment_key(key_name)
+        for key in keys:
+            self.delete_deployment_key(key)
+        return self.post_deployment_key(key_name, key_string)
+
+    @property
+    def clone_command_line(self):
+        if self.dvcs == 'hg':
+            if self.version:
+                return "hg clone -y -r %s %s %s" % (self.version, self.clone_url, self.destination_directory,)
+            return "hg clone -y %s %s" % (self.clone_url, self.destination_directory,)
+
+        # elif self.dvcs == 'git':
+        return "git clone %s %s" % (self.clone_url, self.destination_directory,)
+
+    @property
+    def checkout_command_line(self):
+        if not self.version:
+            return ''
+        if self.dvcs == 'hg':
+            return "hg update %s" % (self.version,)
+        # elif self.dvcs == 'git':
+        return "git checkout %s" % (self.version,)
+
+    @property
+    def pull_command_line(self):
+        if self.dvcs == 'hg':
+            return "hg pull -u'"
+
+        # elif self.dvcs == 'git':
+        return "git pull origin master"
 
 
 if config_parser.has_section('appserver_repository'):
@@ -56,49 +227,35 @@ if config_parser.has_section('appserver_repository'):
     if _AppserverRepository.server_type not in ('gitlab', 'bitbucket'):
         print red("Error: Unsupported value for appserver_repository.server_type : %s" % _AppserverRepository.server_type)
         exit(-1)
+    _AppserverRepository.appserver_url = config_parser.get('appserver_repository', 'appserver_url')
 
-    raw_appserver_url = config_parser.get('appserver_repository', 'appserver_url')
+    _AppserverRepository.other_private_repo_urls = config_parser.get('appserver_repository', 'other_private_repo_urls')
 
-    dvcs, clone_url, appserver_owner, appserver_repository, destination_directory, version = parse_appserver_url(raw_appserver_url)
+    str_to_eval = config_parser.get('appserver_repository', 'user')
+    _AppserverRepository.user = eval(str_to_eval, {'os': os})
 
-    _AppserverRepository.dvcs = config_parser.get('appserver_repository', 'dvcs')
-    if _AppserverRepository.type not in ('git', 'hg'):
-        print red("Error: Incorrect value for appserver_repository.dvcs : %s" % _AppserverRepository.dvcs)
-        exit(-1)
+    str_to_eval = config_parser.get('appserver_repository', 'password')
+    _AppserverRepository.password = eval(str_to_eval, {'os': os})
 
-    _AppserverRepository.protocol = config_parser.get('appserver_repository', 'protocol')
-    if _AppserverRepository.type not in ('ssh', 'https'):
-        print red("Error: Incorrect value for appserver_repository.protocol : %s" % _AppserverRepository.protocol)
-        exit(-1)
-
-    user = config_parser.get('appserver_repository', 'user')
-    _AppserverRepository.user = eval(user, {'os': os})
-
-    password = config_parser.get('appserver_repository', 'password')
-    _AppserverRepository.password = eval(password, {'os': os})
-
-    _AppserverRepository.appserver_owner = config_parser.get('appserver_repository', 'appserver_owner')
-    _AppserverRepository.appserver_repository = config_parser.get('appserver_repository', 'appserver_repository')
-    _AppserverRepository.appserver_destination_directory = config_parser.get('appserver_repository', 'appserver_destination_directory')
-
-    _AppserverRepository.other_private_repositories = config_parser.get('appserver_repository', 'other_private_repositories').split(',')
+    if _AppserverRepository.server_type == 'bitbucket':
+        _AppserverRepository.repository = BitbucketRepository(_AppserverRepository.user,
+                                                              _AppserverRepository.password,
+                                                              _AppserverRepository.appserver_url,
+                                                              env.customer_path)
 else:
     print red("Error: [appserver_repository] section missing in config file")
     exit(-1)
 
 
-
-
-
-
 def mupping(root_user=env.root_user, root_password=env.root_password):
-    """Mup.py "ping": try to run ls then sudo ls over ssh"""
+    """
+    Mup.py "ping": try to run ls then sudo ls over ssh
+    """
     env.user = root_user
     env.password = root_password
     run("ls /") 
     sudo("ls /")   
     return
-
 
 #
 # PostgreSQL Installation related functions
@@ -195,120 +352,146 @@ def sys_install_openerp_prerequisites(root_user=env.root_user, root_password=env
 
     print green("OpenERP prerequisites installed.")
 
+
+def user_get_groups(user_name, root_user=env.root_user, root_password=env.root_password):
+    env.user = root_user
+    env.password = root_password
+    groups = sudo('groups %s' % user_name, warn_only=True)
+    if groups.failed:
+        return []
+    return groups.split(':')[1].lstrip().split(' ')
+
+
+def user_set_password(user_name, password, root_user=env.root_user, root_password=env.root_password):
+    env.user = root_user
+    env.password = root_password
+    # set password for adm_user
+    sudo("echo \"%s:%s\" > pw.tmp" % (user_name, password,), quiet=True)
+    sudo("sudo chpasswd < pw.tmp", quiet=True)
+    sudo("rm pw.tmp", quiet=True)
+    print green("User \"%s\" password set." % user_name)
+
+
+def user_search(user_name, root_user=env.root_user, root_password=env.root_password):
+    """
+    Search if a user exists
+    :type user_name: str looked up username
+    :type root_user: str
+    :type root_password: str
+    :return: id of user
+    :rtype: str
+    """
+    env.user = root_user
+    env.password = root_password
+    lookup = sudo('id -u %s 2>/dev/null' % user_name, warn_only=True, quiet=True)
+    return lookup
+
+
+def user_exists(user_name, root_user=env.root_user, root_password=env.root_password):
+    env.user = root_user
+    env.password = root_password
+    return user_search(user_name) != ''
+
+
+def get_hostname(root_user=env.root_user, root_password=env.root_password):
+    saved_user = env.user
+    saved_password = env.password
+    env.user = root_user
+    env.password = root_password
+
+    hostname = run("hostname", warn_only=True, quiet=True)
+
+    env.user = saved_user
+    env.password = saved_password
+    return hostname
+
+
+def test(root_user=env.root_user, root_password=env.root_password):
+    env.user = root_user
+    env.password = root_password
+    pass
+
+
+def get_sshkey_name():
+    return 'muppy:%s@%s' % (env.adm_user, get_hostname(),)
+
+
+def update_ssh_key_on_private_repositories(sshkey_string):
+    """
+    Update ssh-key on all private repositories
+    """
+    if _AppserverRepository.server_type == 'gitlab':
+        pass
+    elif _AppserverRepository.server_type == 'bitbucket':
+        # first we update key on appserver repository
+        repo = BitbucketRepository(_AppserverRepository.user,
+                                   _AppserverRepository.password,
+                                   _AppserverRepository.appserver_url,
+                                   env.customer_path)
+        if repo.update_deployment_key(get_sshkey_name(), sshkey_string):
+            print green("Deployment key (%s) successfully added to bitbucket repository \"%s\"." % (get_sshkey_name(), repo.name))
+        else:
+            print red("Error: Unable to update deployment key for bitbucket repository :%s/%s" % (repo.owner, repo.name))
+
+        # then we update keys on others repositories
+        repo_url_list = [] or (_AppserverRepository.other_private_repo_urls and _AppserverRepository.other_private_repo_urls.split('\n'))
+        for repo_url in repo_url_list:
+            repo = BitbucketRepository(_AppserverRepository.user,
+                                       _AppserverRepository.password,
+                                       repo_url,
+                                       env.customer_path)
+            if repo.update_deployment_key(get_sshkey_name(), sshkey_string):
+                print green("Deployment key (%s) successfully uploaded to bitbucket repository %s/%s." % (get_sshkey_name(), repo.owner, repo.name,))
+            else:
+                print red("Error: Unable to update deployment key (%s) for bitbucket repository :%s/%s" % (get_sshkey_name(), repo.owner, repo.name))
+
+
 def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_password):
     """Create openerp admin user"""
     env.user = root_user
     env.password = root_password
 
-    # Create the user ; he can be sudoer or not depending on the adm_user_is_sudoer config 
-    if True:
-        if env.adm_user_is_sudoer:
-            sudo("useradd -m -s /bin/bash --system --group sudo %s" % (env.adm_user,))
-            #sudo("useradd -m -s /bin/bash --system --group openerp %s" % (env.adm_user,))
-        else:
-            sudo("useradd -m -s /bin/bash --system %s" % (env.adm_user,))
-    
-        sudo("echo \"%s:%s\" > pw.tmp" % (env.adm_user, env.adm_password,))
-        sudo("sudo chpasswd < pw.tmp")
-        sudo("rm pw.tmp")
-        print green("User \"%s\" created." % env.adm_user)
+    # create adm_user if it does not exists
+    if not user_search(env.adm_user):
+        sudo("useradd -m -s /bin/bash --system %s" % (env.adm_user,))
 
-    if True:
-        # Generate a ssh key and package it 
-        env.user = env.adm_user
-        env.password = env.adm_password
-        run("ssh-keygen -t rsa -N \"\" -f ~/.ssh/id_rsa")
+    # manage adm_user sudo membership
+    if env.adm_user_is_sudoer:
+        if not 'sudo' in user_get_groups(env.adm_user):
+            sudo('usermod -a -G sudo %s' % env.adm_user)
+    else:
+        if 'sudo' in user_get_groups('env.adm_user'):
+            sudo('deluser %s sudo' % env.adm_user)
 
-    if True:
-        # TODO: use a ./tmp directory to store working files
-        env.user = env.adm_user
-        env.password = env.adm_password
-        get('/home/%s/.ssh/id_rsa.pub' % (env.adm_user,), 'ssh_keys_temp/%s_id_rsa.pub' % (env.adm_user,))
+    user_set_password(env.adm_user, env.adm_password)
 
-        ssh_key_file = open('ssh_keys_temp/%s_id_rsa.pub' % (env.adm_user,))
-        data = {
-            'label': 'muppy:%s@%s' % (env.adm_user, env.host,),
-            'key': ssh_key_file.read()
-        }
-
-    if True:
-        # Upload the key to bitbucket.org as a deployment (readonly) key on the app-server repository
-        # TODO: test if key exists before generating a new one or delete existing keys
-        res = requests.post("https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (_bitbucket.appserver_user, _bitbucket.appserver_repository,),
-                            auth=(_bitbucket.user, _bitbucket.password),
-                            data=data)
-        
-        assert res.status_code == requests.codes.ok, "Error: Unable to upload deployment key to bitbucket.org"
-        print green("Deployment key (%s) successfully generated and uploaded to bitbucket." % data['label'])
-
-    if True:
-        # Upload the key to all others private repos
-        # TODO: Infer this list from the buildout.cfg addons key 
-        for repo in _bitbucket.other_private_repositories:
-            if repo:
-                user, repository = repo.split('/')
-                if user and repository:
-                    res = requests.post("https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (user, repository,),
-                                        auth=(_bitbucket.user, _bitbucket.password),
-                                        data=data)
-                    assert res.status_code == requests.codes.ok, "Error: Unable to upload deployment key to bitbucket.org"
-                    print green("Deployment key (%s) successfully uploaded to repository :%s" % (data['label'], repository))
-                else:
-                    print red("%s is not a valid repository name!" % repo)
-
-def sys_update_deployment_key(root_user=env.root_user, root_password=env.root_password):
-    """Retrieve user ssh key and upload it as a deployment key on all repositories (main and other privates)."""
-    env.user = root_user
-    env.password = root_password
-
-    # TODO: use a ./tmp directory to store working files
+    # Generate a ssh key for adm_user if it does not exists
     env.user = env.adm_user
     env.password = env.adm_password
-    ssh_key_temp_file_name = '%s_%s_id_rsa.pub' % (_bitbucket.appserver_repository, env.adm_user,)
-    get('/home/%s/.ssh/id_rsa.pub' % (env.adm_user,), 'ssh_keys_temp/%s' % (ssh_key_temp_file_name,))
+    if not exists('~/.ssh/id_rsa'):
+        run("ssh-keygen -t rsa -N \"\" -f ~/.ssh/id_rsa")
 
-    ssh_key_file = open('ssh_keys_temp/%s' % (ssh_key_temp_file_name,))
-    data = {
-        'label': 'muppy:%s@%s' % (env.adm_user, env.host,),
-        'key': ssh_key_file.read()
-    }
+    # download ssh key
+    host_name = get_hostname()
+    ssh_key_file_name = 'ssh_keys_temp/%s__%s__id_rsa.pub' % (host_name, env.adm_user,)
+    get('/home/%s/.ssh/id_rsa.pub' % (env.adm_user,), ssh_key_file_name)
+    ssh_key_file = open(ssh_key_file_name)
+    ssh_key_string = ssh_key_file.read()
 
-    # Upload the key to bitbucket.org as a deployment (readonly) key on the app-server repository
-    # TODO: test if key exists before generating a new one or delete existing keys
-    res = requests.post("https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (_bitbucket.appserver_user, _bitbucket.appserver_repository,),
-                        auth=(_bitbucket.user, _bitbucket.password),
-                        data=data)
-    
-    assert res.status_code == requests.codes.ok, "Error: Unable to upload deployment key to bitbucket.org"
-    print green("Deployment key (%s) successfully generated and uploaded to bitbucket." % data['label'])
-
-    # Upload the key to all others private repos
-    # TODO: Infer this list from the buildout.cfg addons key 
-    for repo in _bitbucket.other_private_repositories:
-        if repo:
-            user, repository = repo.split('/')
-            if user and repository:
-                res = requests.post("https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (user, repository,),
-                                    auth=(_bitbucket.user, _bitbucket.password),
-                                    data=data)
-                assert res.status_code == requests.codes.ok, "Error: Unable to upload deployment key to bitbucket.org"
-                print green("Deployment key (%s) successfully uploaded to repository :%s" % (data['label'], repository))
-            else:
-                print red("%s is not a valid repository name!" % repo)
+    # update ssh-key on all private repositories
+    update_ssh_key_on_private_repositories(ssh_key_string)
 
 def sys_create_customer_directory(root_user=env.root_user, root_password=env.root_password):
-    """Create Customer directory (/opt/openerp/<customer>) owned by adm_user""" 
+    """Create Customer directory (/opt/openerp/<customer_directory>) owned by adm_user"""
     # Create :
-    #   - Customer directory (/opt/openerp/<customer>) that will hold all subprojects related to this server.
+    #   - Customer directory (/opt/openerp/<customer_directory>) that will hold all subprojects related to this server.
     #  Grant rights only to adm_user (run as root_user)
     env.user = root_user
     env.password = root_password
-
-    customer_path = "/opt/openerp/%s" % (env.customer_directory,)
-    sudo("mkdir -p %s" % (customer_path,))
-    sudo("chmod 755 %s" % (customer_path,))     
-    sudo("chown -R %s: %s" % (env.adm_user, customer_path,))
-    print green("Directory %s created." % customer_path )
+    sudo("mkdir -p %s" % (env.customer_path,))
+    sudo("chmod 755 %s" % (env.customer_path,))
+    sudo("chown -R %s: %s" % (env.adm_user, env.customer_path,))
+    print green("Directory %s created." % env.customer_path )
 
 def sys_create_log_directory(root_user=env.root_user, root_password=env.root_password):
     """Create openerp server log directory ( /var/log/openerp ) and grant rights to adm_user""" 
@@ -318,71 +501,70 @@ def sys_create_log_directory(root_user=env.root_user, root_password=env.root_pas
     env.user = root_user
     env.password = root_password
 
-    print blue("Creating openerp log directory (/var/log/openerp) and grant adm_user rights to it")
-    sudo('mkdir -p /var/log/openerp')
-    sudo('chown -R %s:root /var/log/openerp' % (env.adm_user,))
-    sudo('chmod 775 /var/log/openerp')
-    print green("OpenERP log directory: \"/var/log/openerp/\" created.")
+    sudo('mkdir -p /var/log/openerp', quiet=True)
+    sudo('chown -R %s:root /var/log/openerp' % (env.adm_user,), quiet=True)
+    sudo('chmod 775 /var/log/openerp', quiet=True)
+    print green("OpenERP log directory: \"/var/log/openerp/\" created (owner: %s)." % env.adm_user)
+
 
 #
 # OpenERP related tasks
 #
+def sed_escape(s):
+    """Utility to preserve special characters in password during sed(ing) of buildout.cfg"""
+    t1 = s.replace("\\", "\\\\")
+    t2 = t1.replace("/", "\\/")
+    t3 = t2.replace("&", "\&")
+    return t3
+
+
 def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password):
     """Clone an appserver repository and setup buildout.cfg"""
-    # appserver must hast been created after http://bitbucket.org/cmorisse/template-appserver-v7
-
-    def sed_escape(s):
-        """Utility to preserve special characters in password during sed(ing) of buildout.cfg"""
-        t1 = s.replace("\\", "\\\\")
-        t2 = t1.replace("/", "\\/")
-        t3 = t2.replace("&", "\&")
-        return t3
-
     env.user = adm_user
     env.password = adm_password
 
-    # Add bitbucket SSH key in known_hosts on remote server
-    if _bitbucket.protocol=='ssh':
+    # update known_host (remove then add hostname)
+    if _AppserverRepository.repository.protocol == 'ssh':
         if exists("~/.ssh/known_hosts"):
-            run("ssh-keygen -R bitbucket.org")  # Remove host from known_hosts file
-        run("ssh-keyscan -t rsa bitbucket.org >> ~/.ssh/known_hosts")  # Add bitbucket.org in known host
+            # Remove host from known_hosts file
+            run("ssh-keygen -R %s" % _AppserverRepository.repository.hostname, quiet=True)
+        run("ssh-keyscan -t rsa %s >> ~/.ssh/known_hosts" % _AppserverRepository.repository.hostname, quiet=True)
+        print green("Updated ~/.ssh/known_hosts with \"%s\"." % _AppserverRepository.repository.hostname)
 
     # Remove appserver repo if it exists then clone the appserver repo 
-    customer_path = "/opt/openerp/%s" % (env.customer_directory,)
-    repository_path = "%s/%s" % (customer_path, _bitbucket.appserver_destination_directory or _bitbucket.appserver_repository,) 
+    repository_path = "%s/%s" % (env.customer_path, _AppserverRepository.repository.destination_directory,)
     if exists(repository_path):
-        run("rm -rf %s" % (repository_path,))
+        run("rm -rf %s" % (repository_path,), quiet=True)
+        print green("Existing repository \"%s\" removed." % repository_path)
 
-    if _bitbucket.repository_type == 'hg':
-        if _bitbucket.protocol == 'ssh':
-            run("hg clone -y ssh://hg@bitbucket.org/%s/%s %s" % (_bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
-        else:
-            run("hg clone -y https://%s:%s@bitbucket.org/%s/%s %s" % (_bitbucket.user, _bitbucket.password, _bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
-    else:
-        # So Let's git it
-        if _bitbucket.protocol == 'ssh':
-            run("git clone git@bitbucket.org:%s/%s %s" % (_bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
-        else:
-            run("git clone https://%s:%s@bitbucket.org/%s/%s %s" % (_bitbucket.user, _bitbucket.password, _bitbucket.appserver_user, _bitbucket.appserver_repository, repository_path,))
+    # Clone repository
+    with cd(env.customer_path):
+        run(_AppserverRepository.repository.clone_command_line, quiet=True)
+    print green("Repository \"%s\" cloned." % repository_path)
+
+    if _AppserverRepository.repository.version:
+        with cd(repository_path):
+            run(_AppserverRepository.repository.checkout_command_line, quiet=True)
+            print green("Repository \"%s\" checked out at version '%s'." % (repository_path, _AppserverRepository.repository.version,))
 
     # Create buildout.cfg by copying template
     buildout_cfg_path = "%s/buildout.cfg" % (repository_path, )
-    run("cp %s.template %s" % (buildout_cfg_path, buildout_cfg_path,))
+    run("cp %s.template %s" % (buildout_cfg_path, buildout_cfg_path,), quiet=True)
+
     # Adjust buildout.cfg content
     sed(buildout_cfg_path, "\{\{pg_user\}\}", sed_escape(env.pg_user))
     sed(buildout_cfg_path, "\{\{pg_password\}\}", sed_escape(env.pg_password))
     sed(buildout_cfg_path, "\{\{openerp_admin_password\}\}", sed_escape(env.openerp_admin_password))
+    sed(buildout_cfg_path, "\{\{openerp_admin_password\}\}", sed_escape(env.openerp_admin_password))
 
-    print green("Bitbucket repository \"%s\" cloned" % _bitbucket.appserver_repository)
+    print green("Repository \"%s\" cloned and buildout.cfg generated" % _AppserverRepository.repository.name)
+
 
 def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_password):
-    """buildout bootstrap the application launching install.sh"""
+    """buildout bootstrap the application by launching install.sh"""
     env.user = adm_user
     env.password = adm_password
-
-    customer_path = "/opt/openerp/%s" % (env.customer_directory,)
-    appserver_path = '%s/%s/' % (customer_path, _bitbucket.appserver_destination_directory or _bitbucket.appserver_repository, )
-
+    appserver_path = '%s/%s/' % (env.customer_path, _AppserverRepository.repository.destination_directory, )
     with cd(appserver_path):
         run('./install.sh')
     print green("Appserver installed.")
@@ -393,8 +575,7 @@ def openerp_create_services(root_user=env.root_user, root_password=env.root_pass
     env.user = root_user
     env.password = root_password
 
-    customer_path = "/opt/openerp/%s" % (env.customer_directory,)
-    appserver_path = '%s/%s/' % (customer_path, _bitbucket.appserver_destination_directory or _bitbucket.appserver_repository, )
+    appserver_path = '%s/%s/' % (env.customer_path, _AppserverRepository.repository.destination_directory, )
 
     replace_ctx = {
         'muppy_appserver_path': appserver_path,
@@ -412,7 +593,6 @@ def openerp_create_services(root_user=env.root_user, root_password=env.root_pass
     sudo('update-rc.d openerp-server defaults')
 
     print green("OpenERP services created.")
-
 
 
 def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.root_password):
@@ -439,7 +619,8 @@ def install_openerp_application_server():
     """Install an OpenERP application server (without database)."""
     sys_install_openerp_prerequisites()
     sys_create_openerp_user()
-    sys_create_directories()
+    sys_create_customer_directory()
+    sys_create_log_directory()
 
     openerp_clone_appserver()
     openerp_bootstrap_appserver()
@@ -480,21 +661,22 @@ def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, 
 
     reboot()
 
+
 def openerp_archive_appserver(root_user=env.root_user, root_password=env.root_password):
-    """Move achive the appserver directory into a directory named appserver.archived_YYYY-MM-DD"""
+    """Archive the appserver directory into a directory named appserver.archived_YYYY-MM-DD"""
     env.user = root_user
     env.password = root_password
-    customer_path = "/opt/openerp/%s" % (env.customer_directory,)
-    repository_path = "%s/%s" % (customer_path, _bitbucket.appserver_destination_directory or _bitbucket.appserver_repository,) 
+    repository_path = "%s/%s" % (env.customer_path, _AppserverRepository.repository.desdestination_directory,)
 
     sudo('rm -rf %s.achived_%s' % (repository_path, datetime.date.today()))
     sudo('mv %s %s.achived_%s' % (repository_path, repository_path, datetime.date.today(),))
 
 
-def openerp_reinstall_appserver(phase_1=True, phase_2=True, phase_3=True, phase_4=True, phase_5=True, phase_6=True):
+def openerp_reinstall_appserver():
     """Re-install OpenERP appserver"""
-
-    #TODO: check pre requisites: deployement key uploaded
+    sys_create_openerp_user()
+    sys_create_customer_directory()
+    sys_create_log_directory()
     openerp_remove_init_script_links()
     openerp_archive_appserver()
     openerp_clone_appserver()
@@ -531,41 +713,36 @@ def start_openerp_service():
     print green("openerp-server started")
 
 
-def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, database=None):
+def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, modules=None, database=None):
     """buildout the appserver, update the database and addons_list then restart the openerp service. eg. update_appserver:database=sido_dev"""
     env.user = adm_user
     env.password = adm_password
-
-    appserver_path ="/opt/openerp/%s/%s" % (env.customer_directory, _bitbucket.appserver_repository)
 
     print blue("\"Stopping\" server")
     stop_openerp_service()
 
     print blue("\"Updating\" appserver repository")
-    with cd(appserver_path):
-        if _bitbucket.repository_type == "git":
-            run('git pull origin master')
-        else:  # Hg rocks
-            run('hg pull')
-            run('hg update')
+    print _AppserverRepository.repository.path
+    with cd(_AppserverRepository.repository.path):
+        run(_AppserverRepository.repository.pull_command_line)
 
-    # TODO: Identify running server (gunicorn or classical openerp) 
     print blue("\"Buildouting\" server")
-    with cd(appserver_path):
+    modules_list = modules or env.addons_list
+    with cd(_AppserverRepository.repository.path):
         run('bin/buildout')
-        if database and env.addons_list:
-            run('bin/start_openerp -d %s -u %s --stop-after-init' % (database, env.addons_list,))
+        if database and modules_list:
+            run('bin/start_openerp -u %s -d %s  --stop-after-init' % (modules_list, database, ))
             print green("OpenERP server updated:")
             print green("  - modules=%s" % env.addons_list)
             print green("  - database=%s" % database)
         else:
             print red("No database update:")
-            if not env.addons_list:
-                print red("  - no addons specified in env.addons_list")
+            if not modules_list:
+                print red("  - no addons specified either via modules command line parameter or in env.addons_list")
             if not database:
                 print red("  - no database specified via update_database parameter")
     
-        start_openerp_service()
+    start_openerp_service()
 
 
 
