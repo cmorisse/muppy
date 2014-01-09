@@ -473,7 +473,7 @@ def stop_openerp_service():
 
     env.user = env.root_user
     env.password = env.root_password        
-    sudo('/etc/init.d/openerp-server stop')
+    sudo('/etc/init.d/openerp-server stop', pty=False)
 
     env.user = backup_user
     env.password = backup_password 
@@ -487,7 +487,7 @@ def start_openerp_service():
 
     env.user = env.root_user
     env.password = env.root_password        
-    sudo('/etc/init.d/openerp-server start')
+    sudo('/etc/init.d/openerp-server start', pty=False)
 
     env.user = backup_user
     env.password = backup_password 
