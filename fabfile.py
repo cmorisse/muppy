@@ -164,7 +164,7 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
     env.password = root_password
 
     # Create the user ; he can be sudoer or not depending on the adm_user_is_sudoer config 
-    if False:
+    if True:
         if env.adm_user_is_sudoer:
             sudo("useradd -m -s /bin/bash --system --group sudo %s" % (env.adm_user,))
             #sudo("useradd -m -s /bin/bash --system --group openerp %s" % (env.adm_user,))
@@ -176,7 +176,7 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
         sudo("rm pw.tmp")
         print green("User \"%s\" created." % env.adm_user)
 
-    if False:
+    if True:
         # Generate a ssh key and package it 
         env.user = env.adm_user
         env.password = env.adm_password
@@ -347,7 +347,7 @@ def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_pass
     appserver_path = '%s/%s/' % (customer_path, _bitbucket.appserver_destination_directory or _bitbucket.appserver_repository, )
 
     with cd(appserver_path):
-        run('./install.sh')
+        run('./install.sh openerp')
     print green("Appserver installed.")
 
 
