@@ -529,6 +529,15 @@ def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, datab
     
         start_openerp_service()
 
+def ssh(user='adm_user', root_user=env.root_user, root_password=env.root_password):
+    "Launch SSH session onto host"
+    if user != 'adm_user':
+        ssh_user = env.root_user
+        ssh_password = env.root_password
+    else:
+        ssh_user = env.adm_user
+        ssh_password = env.adm_password
 
-
-
+    import subprocess
+    print "Password= "+ blue("%s" % ssh_password)
+    ssh = subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])
