@@ -25,6 +25,11 @@ if not env.get('config_file', False):
 
 config_parser = ConfigParser.ConfigParser()
 config_parser.readfp(open(env.config_file))
+if not config_parser.has_option('env', 'muppy_version') or config_parser.get('env', 'muppy_version') != '0.2':
+    print red("ERROR: unsupported config_file version ; version 0.2 is required")
+    sys.exit(0)
+
+
 if config_parser.has_option('env', 'hosts'):
     env.hosts = config_parser.get('env', 'hosts').split(',')
 env.root_user = config_parser.get('env', 'root_user')
