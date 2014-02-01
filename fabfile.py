@@ -6,6 +6,7 @@ from fabric.colors import *
 import ConfigParser
 import requests
 import datetime
+import subprocess
 
 __version__ = '0.2-alpha'
 
@@ -566,7 +567,7 @@ def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_pass
     env.password = adm_password
     appserver_path = '%s/%s/' % (env.customer_path, _AppserverRepository.repository.destination_directory, )
     with cd(appserver_path):
-        run('./install.sh')
+        run('./install.sh openerp')
     print green("Appserver installed.")
 
 
@@ -692,7 +693,7 @@ def stop_openerp_service():
 
     env.user = env.root_user
     env.password = env.root_password        
-    sudo('/etc/init.d/openerp-server stop')
+    sudo('/etc/init.d/openerp-server stop', pty=False)
 
     env.user = backup_user
     env.password = backup_password 
@@ -706,7 +707,7 @@ def start_openerp_service():
 
     env.user = env.root_user
     env.password = env.root_password        
-    sudo('/etc/init.d/openerp-server start')
+    sudo('/etc/init.d/openerp-server start', pty=False)
 
     env.user = backup_user
     env.password = backup_password 
@@ -744,7 +745,16 @@ def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, modul
     
     start_openerp_service()
 
-
+def ssh(user='adm_user', root_user=env.root_user, root_password=env.root_password):
+    "Launch SSH session onto host"
+    if user != 'adm_user':
+        ssh_user = env.root_user
+        ssh_password = env.root_password
+    else:
+        ssh_user = env.adm_user
+        ssh_password = env.adm_password
+    print "Password= "+ blue("%s" % ssh_password)
+    ssh = subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])
 
 
 #
