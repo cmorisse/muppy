@@ -45,14 +45,10 @@ env.db_password = config_parser.get('env', 'db_password')
 env.db_host = (config_parser.has_option('env', 'db_host') and config_parser.get('env', 'db_host')) or 'localhost'
 env.db_port = (config_parser.has_option('env', 'db_port') and config_parser.get('env', 'db_port')) or '5432'
 
-
-
-
 env.customer_directory = config_parser.get('env', 'customer_directory')
 env.customer_path = "/opt/openerp/%s" % (env.customer_directory,)
 
 env.openerp_admin_password = config_parser.get('env', 'openerp_admin_password')
-env.addons_list = config_parser.get('env', 'addons_list')
 
 env.backup_directory = (config_parser.has_option('env', 'backup_directory') and config_parser.get('env', 'backup_directory'))\
                         or '/opt/openerp/backups'
@@ -65,7 +61,6 @@ env.muppy_buffer_directory = (config_parser.has_option('env', 'muppy_buffer_dire
 
 env.test_database_name = (config_parser.has_option('env', 'test_database_name') and config_parser.get('env', 'test_database_name'))\
                           or env.customer_directory + '_dev'
-
 
 # TODO: eval root, adm, pg, postgres, user and password from os.environ
 
@@ -930,10 +925,10 @@ def start_openerp_service():
     print green("openerp-server started")
 
 
-def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, modules=None, database=None):
-    """buildout the appserver, update the database and addons_list then restart the openerp service. eg. update_appserver:database=sido_dev"""
-    env.user = adm_user
-    env.password = adm_password
+def update_appserver(database=None, addons_list='all'):
+    """buildout the appserver, run an update -d 'database' -u 'addons_list' then restart the openerp service. eg. update_appserver:sido_dev"""
+    env.user = env.adm_user
+    env.password = env.adm_password
 
     print blue("\"Stopping\" server")
     stop_openerp_service()
@@ -944,20 +939,19 @@ def update_appserver(adm_user=env.adm_user, adm_password=env.adm_password, modul
         run(_AppserverRepository.repository.pull_command_line)
 
     print blue("\"Buildouting\" server")
-    modules_list = modules or env.addons_list
     with cd(_AppserverRepository.repository.path):
         run('bin/buildout')
-        if database and modules_list:
-            run('bin/start_openerp -u %s -d %s  --stop-after-init' % (modules_list, database, ))
+        if database and addons_list:
+            run('bin/start_openerp -d %s -u %s --stop-after-init' % (database, addons_list))
             print green("OpenERP server updated:")
-            print green("  - modules=%s" % env.addons_list)
-            print green("  - database=%s" % database)
+            print green("  - addons_list = %s" % addons_list)
+            print green("  - database = %s" % database)
         else:
             print red("No database update:")
-            if not modules_list:
-                print red("  - no addons specified either via modules command line parameter or in env.addons_list")
+            if not addons_list:
+                print red("  - no value for addons_list parameter")
             if not database:
-                print red("  - no database specified via update_database parameter")
+                print red("  - no value for database parameter")
     
     start_openerp_service()
 
