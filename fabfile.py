@@ -7,6 +7,8 @@ import ConfigParser
 import requests
 import datetime
 import subprocess
+import muppy_magento
+from muppy_magento import *
 
 import pudb
 
@@ -61,6 +63,11 @@ env.muppy_buffer_directory = (config_parser.has_option('env', 'muppy_buffer_dire
 
 env.test_database_name = (config_parser.has_option('env', 'test_database_name') and config_parser.get('env', 'test_database_name'))\
                           or env.customer_directory + '_dev'
+
+#
+# Magento
+if config_parser.has_section('magento'):
+    env.magento = muppy_magento._magento_parse_config(config_parser)
 
 # TODO: eval root, adm, pg, postgres, user and password from os.environ
 
