@@ -5,7 +5,8 @@ from fabric.colors import *
 import sys
 """
 
-Magento is installed using a sudoer account and installed website is run by apache with the 'www-data' user.
+Magento is installed using a sudoer account.
+Installed website is run by apache with the 'www-data' user.
 """
 
 # TODO: we should be able provide host information in magento section and default to env.host if none is provied in magento section
@@ -24,10 +25,12 @@ def _magento_parse_config(config_parser):
     _MagentoConfig.site_name = _MagentoConfig.site_fqdn.split('.')[0]  # first fqdn component
     _MagentoConfig.site_port = up.port
 
-    _MagentoConfig.mysql_host = (config_parser.has_option('magento', 'mysql_host') and config_parser.get('magento', 'mysql_host'))\
-                                          or 'localhost'
+    _MagentoConfig.mysql_host = (config_parser.has_option('magento', 'mysql_host') \
+                                 and config_parser.get('magento', 'mysql_host')) \
+                                 or 'localhost'
     _MagentoConfig.mysql_root_password = config_parser.get('magento', 'mysql_root_password')
-    _MagentoConfig.mysql_database_name = (config_parser.has_option('magento', 'mysql_database_name') and config_parser.get('magento', 'mysql_database_name'))\
+    _MagentoConfig.mysql_database_name = (config_parser.has_option('magento', 'mysql_database_name') \
+                                          and config_parser.get('magento', 'mysql_database_name')) \
     									  or _MagentoConfig.site_name
     _MagentoConfig.mysql_user = config_parser.get('magento', 'mysql_user')
     _MagentoConfig.mysql_password = config_parser.get('magento', 'mysql_password')
@@ -37,7 +40,8 @@ def _magento_parse_config(config_parser):
     _MagentoConfig.admin_email = config_parser.get('magento', 'admin_email')
     _MagentoConfig.admin_frontname_url = config_parser.get('magento', 'admin_frontname_url')
 
-    _MagentoConfig.MAGENTO_ROOT = (config_parser.has_option('magento', 'MAGENTO_ROOT') and config_parser.get('magento', 'MAGENTO_ROOT'))\
+    _MagentoConfig.MAGENTO_ROOT = (config_parser.has_option('magento', 'MAGENTO_ROOT') \
+                                   and config_parser.get('magento', 'MAGENTO_ROOT')) \
     							   or "/opt/magento/%s/magento" % _MagentoConfig.site_name
 
     _MagentoConfig.MAGENTO_DOWNLOAD_URL = config_parser.get('magento', 'MAGENTO_DOWNLOAD_URL')
@@ -107,7 +111,9 @@ def magento_install():
     LogLevel warn
     ErrorLog  /opt/magento/%s/log/error.log
     CustomLog /opt/magento/%s/log/access.log combined
-</VirtualHost>\" > /etc/apache2/sites-available/%s""" % (env.magento.site_fqdn, env.magento.site_name, env.magento.site_name, env.magento.site_name, env.magento.site_name, env.magento.site_fqdn)
+</VirtualHost>\" > /etc/apache2/sites-available/%s""" % (env.magento.site_fqdn, env.magento.site_name, 
+                                                         env.magento.site_name, env.magento.site_name, 
+                                                         env.magento.site_name, env.magento.site_fqdn)
 
     sudo(command_line)
     sudo("a2ensite %s" % env.magento.site_fqdn)
@@ -137,9 +143,13 @@ def magento_install():
 --admin_username \"%s\" \
 --admin_password \"%s\" \
 --use_secure no \
---secure_base_url \"\"" % (env.magento.site_name, env.magento.mysql_host, env.magento.mysql_database_name, env.magento.mysql_user, env.magento.mysql_password, env.magento.url, 
-                           env.magento.admin_frontname_url, env.magento.admin_email, env.magento.admin_user, env.magento.admin_password)
+--secure_base_url \"\"" % (env.magento.site_name, env.magento.mysql_host, 
+                           env.magento.mysql_database_name, env.magento.mysql_user, 
+                           env.magento.mysql_password, env.magento.url, 
+                           env.magento.admin_frontname_url, env.magento.admin_email, 
+                           env.magento.admin_user, env.magento.admin_password)
     sudo(command_line)
+    print green("Magento installation finished. rebooting...")
     reboot()
 
 def magento_install_OpenLABS_Connector():
@@ -147,9 +157,12 @@ def magento_install_OpenLABS_Connector():
     env.user = env.root_user
     env.password = env.root_password
 
-    sudo("apt-get install -y bzr")
+    print cyan("Updating bzr")
+    sudo("apt-get install -y bzr", quiet=True)
     if exists('/opt/magento/magento-module', use_sudo=True):
         sudo("rm -rf /opt/magento/magento-module")
+
+    print cyan("bzr branch lp:magentoerpconnect/magento-module-oerp6.x-stable")
     sudo("bzr branch lp:magentoerpconnect/magento-module-oerp6.x-stable /opt/magento/magento-module")
     sudo("chgrp -R www-data /opt/magento/magento-module")
     sudo("ln -fs /opt/magento/magento-module/Openlabs_OpenERPConnector-1.1.0/ %s/app/code/community/Openlabs_OpenERPConnector-1.1.0" % env.magento.MAGENTO_ROOT)
@@ -157,7 +170,7 @@ def magento_install_OpenLABS_Connector():
 
     sudo("ln -fs /opt/magento/magento-module/Openlabs_OpenERPConnector-1.1.0/app/etc/modules/Openlabs_OpenERPConnector.xml %s/app/etc/modules" % env.magento.MAGENTO_ROOT)
     sudo("chgrp -Rh www-data %s/app/etc/modules/Openlabs_OpenERPConnector.xml" % env.magento.MAGENTO_ROOT)
-    print cyan("Openlabs_OpenERPConnector-1.1.0 installed. You must clear Magento cache.")
+    print green("Openlabs_OpenERPConnector-1.1.0 installed. You must clear Magento cache.")
     reboot()
 
 
