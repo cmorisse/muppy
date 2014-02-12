@@ -12,7 +12,7 @@ from muppy_magento import *
 
 import pudb
 
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 
 # TODO: Installation JasperReport Server
 
@@ -461,9 +461,6 @@ def pg_put_backup_file(local_backup_file_path=None, force=False):
 
     env.user, env.password = env_backup
     return
-
-
-
 
 def pg_install_db_server(pg_user=env.db_user, pg_password=env.db_password):
     """Install PostgreSQL server then create database user"""

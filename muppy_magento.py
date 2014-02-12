@@ -4,7 +4,6 @@ from fabric.contrib.files import exists
 from fabric.colors import *
 import sys
 """
-
 Magento is installed using a sudoer account.
 Installed website is run by apache with the 'www-data' user.
 """
@@ -22,8 +21,9 @@ def _magento_parse_config(config_parser):
         sys.exit(1)
     _MagentoConfig.url = up.geturl()
     _MagentoConfig.site_fqdn = up.netloc.split(':')[0] if up.port else up.netloc  # url without scheme and port
-    _MagentoConfig.site_name = _MagentoConfig.site_fqdn.split('.')[0]  # first fqdn component
+    _MagentoConfig.site_name = config_parser.get('magento', 'site_name')
     _MagentoConfig.site_port = up.port
+    _MagentoConfig.enc_key = config_parser.get('magento', 'enc_key')
 
     _MagentoConfig.mysql_host = (config_parser.has_option('magento', 'mysql_host') \
                                  and config_parser.get('magento', 'mysql_host')) \
@@ -46,6 +46,17 @@ def _magento_parse_config(config_parser):
 
     _MagentoConfig.MAGENTO_DOWNLOAD_URL = config_parser.get('magento', 'MAGENTO_DOWNLOAD_URL')
     _MagentoConfig.MAGENTO_FILE_NAME = _MagentoConfig.MAGENTO_DOWNLOAD_URL.split('/')[-1]
+
+    _MagentoConfig.install_openlabs_connector = config_parser.get('magento', 'install_openlabs_connector')
+    _MagentoConfig.create_api_user = config_parser.get('magento', 'create_api_user')
+    _MagentoConfig.api_username = config_parser.get('magento', 'api_username')
+    _MagentoConfig.api_user_email = config_parser.get('magento', 'api_user_email')
+    _MagentoConfig.api_key = config_parser.get('magento', 'api_key')
+
+    if _MagentoConfig.api_key and not _MagentoConfig.enc_key:
+        print red("Error: missing enc_key.")
+        print red("Error: enc_key is required as you defined an api_key.")
+        sys.exit(1)
 
     return _MagentoConfig
 
@@ -122,6 +133,7 @@ def magento_install():
     #
     # Magento Installation
     #
+    enc_key_param = "--encryption_key \"%s\"" % env.magento.enc_key if env.magento.enc_key else ''
 
     command_line = "php -f /opt/magento/%s/magento/install.php -- \
 --license_agreement_accepted yes \
@@ -143,13 +155,22 @@ def magento_install():
 --admin_username \"%s\" \
 --admin_password \"%s\" \
 --use_secure no \
---secure_base_url \"\"" % (env.magento.site_name, env.magento.mysql_host, 
+--secure_base_url \"\" %s" % (env.magento.site_name, env.magento.mysql_host, 
                            env.magento.mysql_database_name, env.magento.mysql_user, 
                            env.magento.mysql_password, env.magento.url, 
                            env.magento.admin_frontname_url, env.magento.admin_email, 
-                           env.magento.admin_user, env.magento.admin_password)
+                           env.magento.admin_user, env.magento.admin_password, 
+                           enc_key_param,)
     sudo(command_line)
     print green("Magento installation finished. rebooting...")
+    
+    if env.magento.install_openlabs_connector:
+        magento_install_OpenLABS_Connector()
+
+    if env.magento.create_api_user:
+        magento_create_openerp_apiuser()
+
+    print green("Rebooting...")
     reboot()
 
 def magento_install_OpenLABS_Connector():
@@ -157,20 +178,68 @@ def magento_install_OpenLABS_Connector():
     env.user = env.root_user
     env.password = env.root_password
 
-    print cyan("Updating bzr")
+    print cyan("Installing OpenLABS Magento Connector")
+
+    print cyan("apt-getting bzr")
     sudo("apt-get install -y bzr", quiet=True)
     if exists('/opt/magento/magento-module', use_sudo=True):
         sudo("rm -rf /opt/magento/magento-module")
 
     print cyan("bzr branch lp:magentoerpconnect/magento-module-oerp6.x-stable")
     sudo("bzr branch lp:magentoerpconnect/magento-module-oerp6.x-stable /opt/magento/magento-module")
-    sudo("chgrp -R www-data /opt/magento/magento-module")
-    sudo("ln -fs /opt/magento/magento-module/Openlabs_OpenERPConnector-1.1.0/ %s/app/code/community/Openlabs_OpenERPConnector-1.1.0" % env.magento.MAGENTO_ROOT)
-    sudo("chgrp -Rh www-data %s/app/code/community/Openlabs_OpenERPConnector-1.1.0/" % env.magento.MAGENTO_ROOT)
+    #sudo("chgrp -R www-data /opt/magento/magento-module")
+    sudo("ln -fs /opt/magento/magento-module/Openlabs_OpenERPConnector-1.1.0/Openlabs %s/app/code/community/Openlabs" % env.magento.MAGENTO_ROOT)
+    #sudo("chgrp -Rh www-data %s/app/code/community/Openlabs" % env.magento.MAGENTO_ROOT)
 
     sudo("ln -fs /opt/magento/magento-module/Openlabs_OpenERPConnector-1.1.0/app/etc/modules/Openlabs_OpenERPConnector.xml %s/app/etc/modules" % env.magento.MAGENTO_ROOT)
     sudo("chgrp -Rh www-data %s/app/etc/modules/Openlabs_OpenERPConnector.xml" % env.magento.MAGENTO_ROOT)
     print green("Openlabs_OpenERPConnector-1.1.0 installed. You must clear Magento cache.")
-    reboot()
+
+def magento_create_openerp_apiuser():
+    """Install OpenLABS Magento OpenERP Connector params username, email, api_key"""
+    env.user = env.root_user
+    env.password = env.root_password
+
+    # create the role
+    command_line = "mysql -h%s -u%s -p%s -e\"INSERT INTO api_role " \
+                   "(role_id, parent_id, tree_level, sort_order, role_type, user_id, role_name) " \
+                   "VALUES (1, 0, 1, 0, 'G', 0, '%s_role');\"  %s" % (env.magento.mysql_host, 
+                                                                      env.magento.mysql_user, 
+                                                                      env.magento.mysql_password, 
+                                                                      env.magento.api_username,
+                                                                      env.magento.mysql_database_name,)
+    sudo(command_line)
+
+    # grant role access to "all"
+    command_line = "mysql -h%s -u%s -p%s -e\"INSERT INTO api_rule " \
+                   "(rule_id, role_id, resource_id, api_privileges, assert_id, role_type, api_permission ) " \
+                   "VALUES (1, 1, 'all', NULL, 0, 'G', 'allow');\" %s" % (env.magento.mysql_host, 
+                                                                          env.magento.mysql_user, 
+                                                                          env.magento.mysql_password, 
+                                                                          env.magento.mysql_database_name,)
+    sudo(command_line)
 
 
+    # create the user
+    command_line = "mysql -h%s -u%s -p%s -e"\
+                   "\"INSERT INTO api_user " \
+                   "(user_id, firstname, lastname, email, username, api_key, is_active) " \
+                   "VALUES (1, 'OpenERP', 'CONNECTOR', '%s', '%s', '%s', 1);\"  %s" % (env.magento.mysql_host, 
+                                                                                       env.magento.mysql_user, 
+                                                                                       env.magento.mysql_password, 
+                                                                                       env.magento.api_user_email, 
+                                                                                       env.magento.api_username, 
+                                                                                       env.magento.api_key,
+                                                                                       env.magento.mysql_database_name,)
+    sudo(command_line)
+
+    # bind the role to our user
+    command_line = "mysql -h%s -u%s -p%s -e\"INSERT INTO api_role " \
+                   "(role_id, parent_id, tree_level, sort_order, role_type, user_id, role_name) " \
+                   "VALUES (2, 1, 1, 0, 'U', 1, 'OpenERP');\"  %s" % (env.magento.mysql_host, 
+                                                                      env.magento.mysql_user, 
+                                                                      env.magento.mysql_password, 
+                                                                      env.magento.mysql_database_name,)
+    sudo(command_line)
+    print cyan("API user '%s' created." % env.magento.api_username)    
+    return
