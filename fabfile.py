@@ -7,6 +7,8 @@ import ConfigParser
 import requests
 import datetime
 import subprocess
+import StringIO
+
 import muppy_magento
 from muppy_magento import *
 
@@ -63,6 +65,10 @@ env.muppy_buffer_directory = (config_parser.has_option('env', 'muppy_buffer_dire
 
 env.test_database_name = (config_parser.has_option('env', 'test_database_name') and config_parser.get('env', 'test_database_name'))\
                           or env.customer_directory + '_dev'
+
+env.addons_list = (config_parser.has_option('env', 'addons_list') and config_parser.get('env', 'addons_list'))\
+                   or 'all'
+
 
 #
 # Magento
@@ -347,9 +353,10 @@ def pg_get_databases():
     env.user, env.password = env.adm_user, env.adm_password
     get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -U %s --no-align --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host, env.db_user)
     command = run(get_databases_cl, quiet=True)
-
     env.user, env.password = env_backup
-    return command
+    if command.succeeded:
+        return command.split('\r\n')
+    return []
 
 def pg_backup(database, backup_file_name=None):
     """Backup a database and put backup file into {{backup_directory}}. If backup_file_name is undefined, generate a default backup name"""
@@ -497,7 +504,7 @@ def sys_update_upgrade():
     env.user = env.root_user
     env.password = env.root_password
     
-    sudo("apt-get update")
+    sudo("apt-get update --fix-missing")
     sudo("apt-get upgrade -y")
     print green("System updated and upgraded")
 
@@ -556,12 +563,10 @@ def user_search(user_name, root_user=env.root_user, root_password=env.root_passw
     lookup = sudo('id -u %s 2>/dev/null' % user_name, warn_only=True, quiet=True)
     return lookup
 
-
 def user_exists(user_name, root_user=env.root_user, root_password=env.root_password):
     env.user = root_user
     env.password = root_password
     return user_search(user_name) != ''
-
 
 def get_hostname(root_user=env.root_user, root_password=env.root_password):
     env_backup = (env.user, env.password,)
@@ -573,16 +578,13 @@ def get_hostname(root_user=env.root_user, root_password=env.root_password):
     (env.user, env.password,) = env_backup 
     return hostname
 
-
 def test(root_user=env.root_user, root_password=env.root_password):
     env.user = root_user
     env.password = root_password
     pass
 
-
 def get_sshkey_name():
     return 'muppy:%s@%s' % (env.adm_user, get_hostname(),)
-
 
 def update_ssh_key_on_private_repositories(sshkey_string):
     """
@@ -715,6 +717,24 @@ def sed_escape(s):
     return t3
 
 
+
+def generate_buildout_cfg(buildout_cfg_path, base_template_name="buildout.cfg.template"):
+    env_backup = (env.user, env.password,)
+    env.user, env.password = env.adm_user, env.adm_password
+
+    buildout_content = """[buildout]
+extends = %s
+[openerp]
+options.admin_passwd = %s
+options.db_user = %s
+options.db_password = %s
+""" % (base_template_name, env.openerp_admin_password, env.db_user, env.db_password,)
+
+    put(StringIO.StringIO(buildout_content), buildout_cfg_path)
+    (env.user, env.password,) = env_backup 
+    return
+
+
 def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password):
     """Clone an appserver repository and setup buildout.cfg"""
     env.user = adm_user
@@ -746,13 +766,13 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
 
     # Create buildout.cfg by copying template
     buildout_cfg_path = "%s/buildout.cfg" % (repository_path, )
-    run("cp %s.template %s" % (buildout_cfg_path, buildout_cfg_path,), quiet=True)
+#    run("cp %s.template %s" % (buildout_cfg_path, buildout_cfg_path,), quiet=True)
 
     # Adjust buildout.cfg content
-    sed(buildout_cfg_path, "\{\{pg_user\}\}", sed_escape(env.db_user))
-    sed(buildout_cfg_path, "\{\{pg_password\}\}", sed_escape(env.db_password))
-    sed(buildout_cfg_path, "\{\{openerp_admin_password\}\}", sed_escape(env.openerp_admin_password))
-
+ #   sed(buildout_cfg_path, "\{\{pg_user\}\}", sed_escape(env.db_user))
+ #   sed(buildout_cfg_path, "\{\{pg_password\}\}", sed_escape(env.db_password))
+ #   sed(buildout_cfg_path, "\{\{openerp_admin_password\}\}", sed_escape(env.openerp_admin_password))
+    generate_buildout_cfg(buildout_cfg_path)
     print green("Repository \"%s\" cloned and buildout.cfg generated" % _AppserverRepository.repository.name)
 
 
@@ -765,6 +785,20 @@ def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_pass
         run('./install.sh openerp')
     print green("Appserver installed.")
 
+def openerp_remove_appserver():
+    """Remoce init scripts and appserver repository"""
+    env.user = env.root_user
+    env.password = env.root_password
+
+    # remove services
+    openerp_remove_init_script_links()
+
+    # remove appserver directory but leave 
+    repository_path = "%s/%s" % (env.customer_path, _AppserverRepository.repository.destination_directory,)
+    if exists(repository_path):
+        run("rm -rf %s" % (repository_path,), quiet=True)
+        print green("Existing repository \"%s\" removed." % repository_path)
+  
 
 def openerp_create_services(root_user=env.root_user, root_password=env.root_password):
     """Create the openerp services (classic and gunicorn) and default to openerp classic"""
@@ -798,18 +832,18 @@ def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.
 
     # Now stopping service
     print blue("Stopping openerp service...")
-    sudo('/etc/init.d/openerp-server stop')
-    sudo('/etc/init.d/gunicorn-openerp stop')
+    sudo('/etc/init.d/openerp-server stop', quiet=True)
+    sudo('/etc/init.d/gunicorn-openerp stop', quiet=True)
 
     print blue("Removing init script links...")
-    sudo('update-rc.d -f gunicorn-openerp remove')
-    sudo('update-rc.d -f openerp-server remove')
+    sudo('update-rc.d -f gunicorn-openerp remove', quiet=True)
+    sudo('update-rc.d -f openerp-server remove', quiet=True)
 
-    print blue("Deleting init.d scipts file...")
-    sudo('rm /etc/init.d/openerp-server')
-    sudo('rm /etc/init.d/gunicorn-openerp')
+    print blue("Deleting /etc/init.d scripts file...")
+    sudo('rm /etc/init.d/openerp-server', quiet=True)
+    sudo('rm /etc/init.d/gunicorn-openerp', quiet=True)
 
-    print green("OpenERP init scipts removed.")
+    print green("OpenERP init scripts removed.")
 
 def install_openerp_application_server():
     """Install an OpenERP application server (without database)."""
@@ -928,7 +962,6 @@ def start_openerp_service():
     env.password = backup_password 
     print green("openerp-server started")
 
-
 def update_appserver(database=None, addons_list='all'):
     """buildout the appserver, run an update -d 'database' -u 'addons_list' then restart the openerp service. eg. update_appserver:sido_dev"""
     env.user = env.adm_user
@@ -937,8 +970,7 @@ def update_appserver(database=None, addons_list='all'):
     print blue("\"Stopping\" server")
     stop_openerp_service()
 
-    print blue("\"Updating\" appserver repository")
-    print _AppserverRepository.repository.path
+    print blue("\"Updating\" appserver repository: %s" % (_AppserverRepository.repository.path,))
     with cd(_AppserverRepository.repository.path):
         run(_AppserverRepository.repository.pull_command_line)
 
@@ -971,11 +1003,13 @@ def ssh(user='adm_user', root_user=env.root_user, root_password=env.root_passwor
     ssh = subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])
 
 
-def deploy_start(refspec=None, databases=None, adm_user=env.adm_user, adm_password=env.adm_password):
+def deploy_start(databases=None, refspec=None, adm_user=env.adm_user, adm_password=env.adm_password):
     """Deploy version designed by refspec param and update databases"""
     # if refspec is unspecifed will checkout latest version of branch master or default
-    # if databases is unspecified, will update database designed by test_database_name. 
-    # to update no database, specify databases=- as - is forbidden in postgres database name
+    # if databases is unspecified, will update database designed by env.test_database_name. 
+    # to update no database, specify databases=- as '-'' is forbidden by postgres in database name
+    # NOTE: We do backup the postgres db but we don't restore it in case deploy file. You must
+    #       restore by hand if needed
 
     env.user = adm_user
     env.password = env.adm_password
@@ -995,13 +1029,14 @@ def deploy_start(refspec=None, databases=None, adm_user=env.adm_user, adm_passwo
     requested_database_list = databases and databases.split(';') or []
     if not 'postgres' in requested_database_list:
         requested_database_list.append('postgres')
-    existing_database_list = pg_get_databases().split('\r\n')
+    existing_database_list = pg_get_databases()
     database_not_found = False
     print blue("Checking databases: "),
     if not requested_database_list:
         print magenta("skipped")
     else:
         print
+
     for requested_database in requested_database_list:
         if requested_database not in existing_database_list:
             database_not_found = True
@@ -1015,7 +1050,6 @@ def deploy_start(refspec=None, databases=None, adm_user=env.adm_user, adm_passwo
     # We atomicaly generate a lock file or fail
     timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     hostname = get_hostname()
-
     database_dict = { requested_database: os.path.join(env.backup_directory,"%s__%s__%s.pg_dump" % (timestamp, requested_database, hostname,)) for requested_database in requested_database_list}
     file_list = ",".join(database_dict.values())
     lock_file_content = '%s:%s' % (refspec, file_list,)
@@ -1038,8 +1072,24 @@ def deploy_start(refspec=None, databases=None, adm_user=env.adm_user, adm_passwo
     with cd(_AppserverRepository.repository.path):
         run(_AppserverRepository.repository.pull_command_line)
 
+    # we update (openerp sense) all modules on specified database(s)
+    for database_name, backup_file_name in database_dict.items():
+        if database_name == 'postgres':
+            continue
+        with cd(_AppserverRepository.repository.path):
+            command_line = 'bin/start_openerp -d %s -u %s --stop-after-init' % (database_name, env.addons_list,)
+            retval = run(command_line, warn_only=True)
+            # TODO: this command always succeeds. So we need to check stderr for ERROR: or Traceback
+            # import pudb ; pudb.set_trace()
+            if True: # stderr is clean
+                print green("OpenERP server update succeded:")
+                print green("  - database = %s" % database_name)
+                print green("  - addons_list = %s" % env.addons_list)
+            else:
+                print red("OpenERP Server update failed!")
 
     start_openerp_service()
+
 
 def deploy_commit():
     """Simply remove deploy.lock"""
@@ -1053,7 +1103,7 @@ def deploy_commit():
 
     run('rm %s' % lock_file_path, quiet=True)
     print green("Removed file '%s'." % lock_file_path)
-    print magenta("Note that commit leave backups file untouched.")
+    print magenta("Note that deploy_commit leave backups files untouched.")
 
 
 #
