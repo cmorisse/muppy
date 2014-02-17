@@ -31,7 +31,7 @@ def _magento_parse_config(config_parser):
     _MagentoConfig.mysql_root_password = config_parser.get('magento', 'mysql_root_password')
     _MagentoConfig.mysql_database_name = (config_parser.has_option('magento', 'mysql_database_name') \
                                           and config_parser.get('magento', 'mysql_database_name')) \
-    									  or _MagentoConfig.site_name
+                                          or _MagentoConfig.site_name
     _MagentoConfig.mysql_user = config_parser.get('magento', 'mysql_user')
     _MagentoConfig.mysql_password = config_parser.get('magento', 'mysql_password')
 
@@ -42,7 +42,7 @@ def _magento_parse_config(config_parser):
 
     _MagentoConfig.MAGENTO_ROOT = (config_parser.has_option('magento', 'MAGENTO_ROOT') \
                                    and config_parser.get('magento', 'MAGENTO_ROOT')) \
-    							   or "/opt/magento/%s/magento" % _MagentoConfig.site_name
+                                   or "/opt/magento/%s/magento" % _MagentoConfig.site_name
 
     _MagentoConfig.MAGENTO_DOWNLOAD_URL = config_parser.get('magento', 'MAGENTO_DOWNLOAD_URL')
     _MagentoConfig.MAGENTO_FILE_NAME = _MagentoConfig.MAGENTO_DOWNLOAD_URL.split('/')[-1]
@@ -61,15 +61,6 @@ def _magento_parse_config(config_parser):
     return _MagentoConfig
 
 
-def magento_upgrade():
-    """Magento initial sys update"""
-    env.user = env.root_user
-    env.password = env.root_password
-    sudo("apt-get update --fix-missing")
-    sudo("apt-get upgrade -y")
-    sudo("apt-get install -y vim htop")
-    reboot()
-
 def magento_install():
     """Magento initial installation"""
     env.user = env.root_user
@@ -80,6 +71,14 @@ def magento_install():
     sudo("a2enmod rewrite")
     sudo("service apache2 restart")
     print green("Apache2 is installed")
+
+    #
+    # We add root_user and adm_user to www-data group
+    #
+    sudo("adduser %s www-data" % env.root_user)
+    ret_val = sudo('getent passwd %s' % env.adm_user, warn_only=True, quiet=True)   
+    if ret_val.succeeded: 
+        sudo("adduser %s www-data" % env.adm_user)
 
     #
     # mysql
@@ -162,7 +161,7 @@ def magento_install():
                            env.magento.admin_user, env.magento.admin_password, 
                            enc_key_param,)
     sudo(command_line)
-    print green("Magento installation finished. rebooting...")
+    print green("Magento installation finished.")
     
     if env.magento.install_openlabs_connector:
         magento_install_OpenLABS_Connector()
