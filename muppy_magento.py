@@ -14,49 +14,50 @@ class _MagentoConfig:
     pass
 
 def _magento_parse_config(config_parser):
-    _MagentoConfig.apache_server_name = config_parser.get('magento', 'apache_server_name')
-    up = urlparse(config_parser.get('magento', 'url'))
-    if up.scheme != 'http':
-        print red("Error: Muppy is unable to install Magento secured (https) sites.")
-        sys.exit(1)
-    _MagentoConfig.url = up.geturl()
-    _MagentoConfig.site_fqdn = up.netloc.split(':')[0] if up.port else up.netloc  # url without scheme and port
-    _MagentoConfig.site_name = config_parser.get('magento', 'site_name')
-    _MagentoConfig.site_port = up.port
-    _MagentoConfig.enc_key = config_parser.get('magento', 'enc_key')
+    if config_parser.get('magento', 'install_magento') and eval(config_parser.get('magento', 'install_magento')):
+      _MagentoConfig.apache_server_name = config_parser.get('magento', 'apache_server_name')
+      up = urlparse(config_parser.get('magento', 'url'))
+      if up.scheme != 'http':
+          print red("Error: Muppy is unable to install Magento secured (https) sites.")
+          sys.exit(1)
+      _MagentoConfig.url = up.geturl()
+      _MagentoConfig.site_fqdn = up.netloc.split(':')[0] if up.port else up.netloc  # url without scheme and port
+      _MagentoConfig.site_name = config_parser.get('magento', 'site_name')
+      _MagentoConfig.site_port = up.port
+      _MagentoConfig.enc_key = config_parser.get('magento', 'enc_key')
 
-    _MagentoConfig.mysql_host = (config_parser.has_option('magento', 'mysql_host') \
-                                 and config_parser.get('magento', 'mysql_host')) \
-                                 or 'localhost'
-    _MagentoConfig.mysql_root_password = config_parser.get('magento', 'mysql_root_password')
-    _MagentoConfig.mysql_database_name = (config_parser.has_option('magento', 'mysql_database_name') \
-                                          and config_parser.get('magento', 'mysql_database_name')) \
-                                          or _MagentoConfig.site_name
-    _MagentoConfig.mysql_user = config_parser.get('magento', 'mysql_user')
-    _MagentoConfig.mysql_password = config_parser.get('magento', 'mysql_password')
+      _MagentoConfig.mysql_host = (config_parser.has_option('magento', 'mysql_host') \
+                                   and config_parser.get('magento', 'mysql_host')) \
+                                   or 'localhost'
+      _MagentoConfig.mysql_root_password = config_parser.get('magento', 'mysql_root_password')
+      _MagentoConfig.mysql_database_name = (config_parser.has_option('magento', 'mysql_database_name') \
+                                            and config_parser.get('magento', 'mysql_database_name')) \
+                                            or _MagentoConfig.site_name
+      _MagentoConfig.mysql_user = config_parser.get('magento', 'mysql_user')
+      _MagentoConfig.mysql_password = config_parser.get('magento', 'mysql_password')
 
-    _MagentoConfig.admin_user = config_parser.get('magento', 'admin_user')
-    _MagentoConfig.admin_password = config_parser.get('magento', 'admin_password')
-    _MagentoConfig.admin_email = config_parser.get('magento', 'admin_email')
-    _MagentoConfig.admin_frontname_url = config_parser.get('magento', 'admin_frontname_url')
+      _MagentoConfig.admin_user = config_parser.get('magento', 'admin_user')
+      _MagentoConfig.admin_password = config_parser.get('magento', 'admin_password')
+      _MagentoConfig.admin_email = config_parser.get('magento', 'admin_email')
+      _MagentoConfig.admin_frontname_url = config_parser.get('magento', 'admin_frontname_url')
 
-    _MagentoConfig.MAGENTO_ROOT = (config_parser.has_option('magento', 'MAGENTO_ROOT') \
-                                   and config_parser.get('magento', 'MAGENTO_ROOT')) \
-                                   or "/opt/magento/%s/magento" % _MagentoConfig.site_name
+      _MagentoConfig.MAGENTO_ROOT = (config_parser.has_option('magento', 'MAGENTO_ROOT') \
+                                     and config_parser.get('magento', 'MAGENTO_ROOT')) \
+                                     or "/opt/magento/%s/magento" % _MagentoConfig.site_name
 
-    _MagentoConfig.MAGENTO_DOWNLOAD_URL = config_parser.get('magento', 'MAGENTO_DOWNLOAD_URL')
-    _MagentoConfig.MAGENTO_FILE_NAME = _MagentoConfig.MAGENTO_DOWNLOAD_URL.split('/')[-1]
+      _MagentoConfig.MAGENTO_DOWNLOAD_URL = config_parser.get('magento', 'MAGENTO_DOWNLOAD_URL')
+      _MagentoConfig.MAGENTO_FILE_NAME = _MagentoConfig.MAGENTO_DOWNLOAD_URL.split('/')[-1]
 
-    _MagentoConfig.install_openlabs_connector = config_parser.get('magento', 'install_openlabs_connector')
-    _MagentoConfig.create_api_user = config_parser.get('magento', 'create_api_user')
-    _MagentoConfig.api_username = config_parser.get('magento', 'api_username')
-    _MagentoConfig.api_user_email = config_parser.get('magento', 'api_user_email')
-    _MagentoConfig.api_key = config_parser.get('magento', 'api_key')
+      _MagentoConfig.install_openlabs_connector = config_parser.get('magento', 'install_openlabs_connector')
+      _MagentoConfig.create_api_user = config_parser.get('magento', 'create_api_user')
+      _MagentoConfig.api_username = config_parser.get('magento', 'api_username')
+      _MagentoConfig.api_user_email = config_parser.get('magento', 'api_user_email')
+      _MagentoConfig.api_key = config_parser.get('magento', 'api_key')
 
-    if _MagentoConfig.api_key and not _MagentoConfig.enc_key:
-        print red("Error: missing enc_key.")
-        print red("Error: enc_key is required as you defined an api_key.")
-        sys.exit(1)
+      if _MagentoConfig.api_key and not _MagentoConfig.enc_key:
+          print red("Error: missing enc_key.")
+          print red("Error: enc_key is required as you defined an api_key.")
+          sys.exit(1)
 
     return _MagentoConfig
 
