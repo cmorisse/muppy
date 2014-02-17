@@ -18,7 +18,6 @@ __version__ = '0.2.2'
 
 # TODO: Installation JasperReport Server
 
-
 if not env.get('config_file', False):
     print blue("Launching muppy version %s" % __version__)
     print ""
@@ -543,7 +542,7 @@ def user_set_password(user_name, password, root_user=env.root_user, root_passwor
     env.user = root_user
     env.password = root_password
     # set password for adm_user
-    sudo("echo \"%s:%s\" > pw.tmp" % (user_name, password,), quiet=True)
+    sudo("echo '%s:%s' > pw.tmp" % (user_name, password,), quiet=True)
     sudo("sudo chpasswd < pw.tmp", quiet=True)
     sudo("rm pw.tmp", quiet=True)
     print green("User \"%s\" password set." % user_name)
