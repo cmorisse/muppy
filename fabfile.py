@@ -371,7 +371,7 @@ def pg_backup(database, backup_file_name=None):
         hostname = get_hostname()
         backup_file_name = os.path.join(env.backup_directory,"%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
 
-    backup_commande_line = "export PGPASSWORD=\"%s\" && pg_dump -Fc -h %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_user, backup_file_name, database,)
+    backup_commande_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_user, backup_file_name, database,)
     run(backup_commande_line)
 
     env.user, env.password = env_backup
@@ -394,7 +394,7 @@ def pg_restore(backup_file, jobs=2):
     (timestamp, database, host,) = backup_file.split('.')[0].split('__')
 
     if database in pg_get_databases():
-        dropdb_command_line = "export PGPASSWORD=\"%s\" && dropdb -h %s -U %s %s" % ( env.db_password, env.db_host, env.db_user, database,)
+        dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s" % ( env.db_password, env.db_host, env.db_user, database,)
         run(dropdb_command_line)
 
     try:
@@ -403,7 +403,7 @@ def pg_restore(backup_file, jobs=2):
     except Exception:
         jobs_option = ''
 
-    restore_command_line = "export PGPASSWORD=\"%s\" && pg_restore -h %s -U %s %s --create -d postgres %s" % ( env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
+    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s" % ( env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
     run(restore_command_line)
 
     env.user, env.password = env_backup
