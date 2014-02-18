@@ -424,7 +424,7 @@ def pg_list_backups():
     env.user, env.password = env_backup
     return
 
-def pg_get_backup_file(backup_file, local_path=None):
+def pg_get_backup_file(backup_file, local_path="backups/%(host)s/%(path)s"):
     """Download a backup file from {{backup_directory}} into local_path"""
     env_backup = (env.user, env.password,)
     env.user, env.password = env.adm_user, env.adm_password
