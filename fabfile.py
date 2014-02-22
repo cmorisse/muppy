@@ -9,8 +9,11 @@ import datetime
 import subprocess
 import StringIO
 
-import muppy_magento
+import muppy_utils
+
 from muppy_magento import *
+import vagrant
+import postgresql
 
 import pudb
 
@@ -39,40 +42,40 @@ if config_parser.has_option('env', 'hosts'):
     env.hosts = config_parser.get('env', 'hosts').split(',')
 env.root_user = config_parser.get('env', 'root_user')
 env.root_password = config_parser.get('env', 'root_password')
-env.adm_user = config_parser.get('env', 'adm_user')
-env.adm_password = config_parser.get('env', 'adm_password')
-env.adm_user_is_sudoer = config_parser.get('env', 'adm_user_is_sudoer')
 
-env.db_user = config_parser.get('env', 'db_user')
-env.db_password = config_parser.get('env', 'db_password')
+
+env.adm_user = (config_parser.has_option('env', 'adm_user') and config_parser.get('env', 'adm_user')) or env.root_user
+env.adm_password = (config_parser.has_option('env', 'adm_password') and config_parser.get('env', 'adm_password')) or env.root_password
+env.adm_user_is_sudoer = (config_parser.has_option('env', 'adm_user_is_sudoer') and config_parser.get('env', 'adm_user_is_sudoer')) or False
+
+
+env.db_user = (config_parser.has_option('env', 'db_user') and config_parser.get('env', 'db_user')) or env.adm_user
+env.db_password = (config_parser.has_option('env', 'db_password') and config_parser.get('env', 'db_password')) or env.adm_password
 env.db_host = (config_parser.has_option('env', 'db_host') and config_parser.get('env', 'db_host')) or 'localhost'
 env.db_port = (config_parser.has_option('env', 'db_port') and config_parser.get('env', 'db_port')) or '5432'
 
-env.customer_directory = config_parser.get('env', 'customer_directory')
+
+env.customer_directory = (config_parser.has_option('env', 'customer_directory') and config_parser.get('env', 'customer_directory')) or 'demo'
+
 env.customer_path = "/opt/openerp/%s" % (env.customer_directory,)
 
-env.openerp_admin_password = config_parser.get('env', 'openerp_admin_password')
+env.openerp_admin_password = (config_parser.has_option('env', 'openerp_admin_password') and config_parser.get('env', 'openerp_admin_password')) or 'admin'
 
-env.backup_directory = (config_parser.has_option('env', 'backup_directory') and config_parser.get('env', 'backup_directory'))\
-                        or '/opt/openerp/backups'
-
-env.muppy_transactions_directory = (config_parser.has_option('env', 'muppy_transactions_directory') and config_parser.get('env', 'muppy_transactions_directory'))\
-                                    or '/opt/openerp/muppy_transactions'
-
-env.muppy_buffer_directory = (config_parser.has_option('env', 'muppy_buffer_directory') and config_parser.get('env', 'muppy_buffer_directory'))\
-                              or '/opt/openerp/muppy_buffer'
-
-env.test_database_name = (config_parser.has_option('env', 'test_database_name') and config_parser.get('env', 'test_database_name'))\
-                          or env.customer_directory + '_dev'
-
-env.addons_list = (config_parser.has_option('env', 'addons_list') and config_parser.get('env', 'addons_list'))\
-                   or 'all'
+env.backup_directory = (config_parser.has_option('env', 'backup_directory') and config_parser.get('env', 'backup_directory')) or '/opt/openerp/backups'
+env.muppy_transactions_directory = (config_parser.has_option('env', 'muppy_transactions_directory') and config_parser.get('env', 'muppy_transactions_directory')) or '/opt/openerp/muppy_transactions'
+env.muppy_buffer_directory = (config_parser.has_option('env', 'muppy_buffer_directory') and config_parser.get('env', 'muppy_buffer_directory')) or '/opt/openerp/muppy_buffer'
+env.test_database_name = (config_parser.has_option('env', 'test_database_name') and config_parser.get('env', 'test_database_name')) or env.customer_directory + '_dev'
+env.addons_list = (config_parser.has_option('env', 'addons_list') and config_parser.get('env', 'addons_list')) or 'all'
 
 
 #
 # Magento
 if config_parser.has_section('magento'):
-    env.magento = muppy_magento._magento_parse_config(config_parser)
+    env.magento = magento_parse_config(config_parser)
+#
+# Vagrant
+if config_parser.has_section('vagrant'):
+    env.vagrant = vagrant.parse_config(config_parser)
 
 # TODO: eval root, adm, pg, postgres, user and password from os.environ
 
@@ -282,9 +285,8 @@ if config_parser.has_section('appserver_repository'):
     if _AppserverRepository.server_type not in ('gitlab', 'bitbucket'):
         print red("Error: Unsupported value for appserver_repository.server_type : %s" % _AppserverRepository.server_type)
         exit(-1)
-    _AppserverRepository.appserver_url = config_parser.get('appserver_repository', 'appserver_url')
-
-    _AppserverRepository.other_private_repo_urls = config_parser.get('appserver_repository', 'other_private_repo_urls')
+    _AppserverRepository.appserver_url = (config_parser.has_option('appserver_repository', 'appserver_url') and config_parser.get('appserver_repository', 'appserver_url')) or "git git@bitbucket.org:cmorisse/appserver-templatev7.git"
+    _AppserverRepository.other_private_repo_urls = (config_parser.has_option('appserver_repository', 'other_private_repo_urls') and config_parser.get('appserver_repository', 'other_private_repo_urls')) or ''
 
     str_to_eval = config_parser.get('appserver_repository', 'user')
     _AppserverRepository.user = eval(str_to_eval, {'os': os})
@@ -302,6 +304,7 @@ else:
     exit(-1)
 
 
+@task
 def mupping(root_user=env.root_user, root_password=env.root_password):
     """Mup"ping": try to run ls then sudo ls over ssh"""
     env.user = root_user
@@ -313,15 +316,17 @@ def mupping(root_user=env.root_user, root_password=env.root_password):
 #
 # PostgreSQL Installation related functions
 #
-def pg_install_server(root_user=env.root_user, root_password=env.root_password):
+@task
+def pg_install_server():
     """Install Postgresql Server and CLI Client."""
-    env.user = root_user
-    env.password = root_password
+    env.user = env.root_user
+    env.password = env.root_password
     
     sudo('apt-get update --fix-missing')
     sudo('apt-get install -y postgresql graphviz postgresql-client')
     print green("PosgreSQL server and client installed.")
 
+@task
 def pg_create_openerp_user(pg_user=env.db_user, pg_password=env.db_password):
     """Create a Postgres User for OpenERP Server"""
     env.user = env.root_user
@@ -330,6 +335,7 @@ def pg_create_openerp_user(pg_user=env.db_user, pg_password=env.db_password):
     sudo( """su postgres -c 'echo "CREATE ROLE %s WITH LOGIN SUPERUSER CREATEDB NOCREATEROLE ENCRYPTED PASSWORD '"'"'%s'"'"' ;" | psql ' """ % (pg_user, pg_password) )
     print green("PosgreSQL %s user created." % pg_user)
 
+@task
 def pg_allow_remote_access_for_EVERYONE():
     """Configure Postgres to allow remote network connection from any host. WARNING High Security Risk"""
     env.user = env.root_user
@@ -345,6 +351,7 @@ def pg_allow_remote_access_for_EVERYONE():
     sudo("service postgresql restart")
     print green("PosgreSQL is now reachable from remote network.")
 
+@task
 def pg_get_databases():
     """Returns list of databases"""
     # 'psql -h localhost -U openerp --no-align --pset footer -t -c "SELECT datname FROM pg_database WHERE datistemplate = FALSE ;" postgres'    
@@ -354,9 +361,14 @@ def pg_get_databases():
     command = run(get_databases_cl, quiet=True)
     env.user, env.password = env_backup
     if command.succeeded:
+        db_list = command.split('\r\n')
+        print
+        for db in db_list:
+            print db
         return command.split('\r\n')
     return []
 
+@task
 def pg_backup(database, backup_file_name=None):
     """Backup a database and put backup file into {{backup_directory}}. If backup_file_name is undefined, generate a default backup name"""
     env_backup = (env.user, env.password,)
@@ -377,7 +389,8 @@ def pg_backup(database, backup_file_name=None):
     env.user, env.password = env_backup
     return
 
-def pg_restore(backup_file, jobs=2):
+@task
+def pg_restore(backup_file, jobs=4):
     """Restore a database using a backup file stored in {{backup_directory}}."""
     env_backup = (env.user, env.password,)
     env.user, env.password = env.adm_user, env.adm_password
@@ -410,10 +423,7 @@ def pg_restore(backup_file, jobs=2):
     return
 
 
-#
-# pg_restore -cC -h localhost -d postgres -U openerp -C /chemin/vers/20121023_090808_openerp_backup_db_ps41_devenvido.pg_dump_c
-
-
+@task
 def pg_list_backups():
     """List files in {{backup_directory}}."""
     env_backup = (env.user, env.password,)
@@ -424,6 +434,7 @@ def pg_list_backups():
     env.user, env.password = env_backup
     return
 
+@task
 def pg_get_backup_file(backup_file, local_path="backups/%(host)s/%(path)s"):
     """Download a backup file from {{backup_directory}} into local_path"""
     env_backup = (env.user, env.password,)
@@ -444,6 +455,7 @@ def pg_get_backup_file(backup_file, local_path="backups/%(host)s/%(path)s"):
     env.user, env.password = env_backup
     return
 
+@task
 def pg_put_backup_file(local_backup_file_path=None, force=False):
     """Upload a backup file to {{backup_directory}}. Fail if local_backup_file does not exist or remote backup file exists unless force is specified."""
     env_backup = (env.user, env.password,)
@@ -468,6 +480,7 @@ def pg_put_backup_file(local_backup_file_path=None, force=False):
     env.user, env.password = env_backup
     return
 
+@task
 def pg_install_db_server(pg_user=env.db_user, pg_password=env.db_password):
     """Install PostgreSQL server then create database user"""
     pg_install_server()
@@ -476,10 +489,11 @@ def pg_install_db_server(pg_user=env.db_user, pg_password=env.db_password):
 #
 # VMware Tools Installation (shitty)
 #
-def sys_install_vmware_tools(root_user=env.root_user, root_password=env.root_password):
+@task
+def sys_install_vmware_tools():
     """VMWare Tools Installation (requires the tools ISO to be mounted)"""
-    env.user = root_user
-    env.password = root_password
+    env.user = env.root_user
+    env.password = env.root_password
 
     # TODO: Test for Hypervisor Version, download tools, install them then clean
     print
@@ -498,6 +512,7 @@ def sys_install_vmware_tools(root_user=env.root_user, root_password=env.root_pas
 #
 # System related tasks
 #
+@task
 def sys_update_upgrade():
     """Update and upgrade system (with apt-get)"""
     env.user = env.root_user
@@ -507,10 +522,11 @@ def sys_update_upgrade():
     sudo("apt-get upgrade -y")
     print green("System updated and upgraded")
 
-def sys_install_openerp_prerequisites(root_user=env.root_user, root_password=env.root_password):
+@task
+def sys_install_openerp_prerequisites():
     """Install all ubuntu packages required for OpenERP Server (run as root_user)"""
-    env.user = root_user
-    env.password = root_password
+    env.user = env.root_user
+    env.password = env.root_password
 
     sudo('wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py')
     sudo('python ez_setup.py')
@@ -528,19 +544,20 @@ def sys_install_openerp_prerequisites(root_user=env.root_user, root_password=env
 
     print green("OpenERP prerequisites installed.")
 
-
-def user_get_groups(user_name, root_user=env.root_user, root_password=env.root_password):
-    env.user = root_user
-    env.password = root_password
+@task
+def user_get_groups(user_name):
+    env.user = env.root_user
+    env.password = env.root_password
     groups = sudo('groups %s' % user_name, warn_only=True)
     if groups.failed:
         return []
     return groups.split(':')[1].lstrip().split(' ')
 
 
-def user_set_password(user_name, password, root_user=env.root_user, root_password=env.root_password):
-    env.user = root_user
-    env.password = root_password
+@task
+def user_set_password(user_name):
+    env.user = env.root_user
+    env.password = env.root_password
     # set password for adm_user
     sudo("echo '%s:%s' > pw.tmp" % (user_name, password,), quiet=True)
     sudo("sudo chpasswd < pw.tmp", quiet=True)
@@ -548,7 +565,8 @@ def user_set_password(user_name, password, root_user=env.root_user, root_passwor
     print green("User \"%s\" password set." % user_name)
 
 
-def user_search(user_name, root_user=env.root_user, root_password=env.root_password):
+@task
+def user_search(user_name):
     """
     Search if a user exists
     :type user_name: str looked up username
@@ -557,30 +575,26 @@ def user_search(user_name, root_user=env.root_user, root_password=env.root_passw
     :return: id of user
     :rtype: str
     """
-    env.user = root_user
-    env.password = root_password
+    env.user = env.root_user
+    env.password = env.root_password
     lookup = sudo('id -u %s 2>/dev/null' % user_name, warn_only=True, quiet=True)
     return lookup
 
-def user_exists(user_name, root_user=env.root_user, root_password=env.root_password):
-    env.user = root_user
-    env.password = root_password
+@task
+def user_exists(user_name):
+    env.user = env.root_user
+    env.password = env.root_password
     return user_search(user_name) != ''
 
-def get_hostname(root_user=env.root_user, root_password=env.root_password):
+@task
+def get_hostname():
     env_backup = (env.user, env.password,)
-
-    env.user, env.password = root_user, root_password
+    env.user, env.password = env.root_user, env.root_password
 
     hostname = run("hostname", warn_only=True, quiet=True)
 
     (env.user, env.password,) = env_backup 
     return hostname
-
-def test(root_user=env.root_user, root_password=env.root_password):
-    env.user = root_user
-    env.password = root_password
-    pass
 
 def get_sshkey_name():
     return 'muppy:%s@%s' % (env.adm_user, get_hostname(),)
@@ -615,6 +629,7 @@ def update_ssh_key_on_private_repositories(sshkey_string):
                 print red("Error: Unable to update deployment key (%s) for bitbucket repository :%s/%s" % (get_sshkey_name(), repo.owner, repo.name))
 
 
+@task
 def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_password):
     """Create openerp admin user"""
     env.user = root_user
@@ -650,6 +665,7 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
     # update ssh-key on all private repositories
     update_ssh_key_on_private_repositories(ssh_key_string)
 
+@task
 def sys_create_customer_directory(root_user=env.root_user, root_password=env.root_password):
     """Create Customer directory (/opt/openerp/<customer_directory>) owned by adm_user"""
     # Create :
@@ -662,6 +678,7 @@ def sys_create_customer_directory(root_user=env.root_user, root_password=env.roo
     sudo("chown -R %s: %s" % (env.adm_user, env.customer_path,))
     print green("Directory %s created." % env.customer_path )
 
+@task
 def sys_create_log_directory(root_user=env.root_user, root_password=env.root_password):
     """Create openerp server log directory ( /var/log/openerp ) and grant rights to adm_user""" 
     # Create :
@@ -675,6 +692,7 @@ def sys_create_log_directory(root_user=env.root_user, root_password=env.root_pas
     sudo('chmod 775 /var/log/openerp', quiet=True)
     print green("OpenERP log directory: \"/var/log/openerp/\" created (owner: %s)." % env.adm_user)
 
+@task
 def sys_create_backup_directory(root_user=env.root_user, root_password=env.root_password):
     """Create Muppy backup directory"""
     env.user = root_user
@@ -685,6 +703,7 @@ def sys_create_backup_directory(root_user=env.root_user, root_password=env.root_
     sudo('chmod 755 %s' % env.backup_directory, quiet=True)
     print green("OpenERP backup directory: \"%s\" created." % env.backup_directory)
 
+@task
 def sys_create_buffer_directory(root_user=env.root_user, root_password=env.root_password):
     """Create Muppy buffer directory"""
     env.user = root_user
@@ -695,6 +714,7 @@ def sys_create_buffer_directory(root_user=env.root_user, root_password=env.root_
     sudo('chmod 755 %s' % env.muppy_buffer_directory, quiet=True)
     print green("Muppy buffer directory: \"%s\" created." % env.muppy_buffer_directory)
 
+@task
 def sys_create_muppy_transactions_directory(root_user=env.root_user, root_password=env.root_password):
     """Create Muppy transactions directory"""
     env.user = root_user
@@ -716,7 +736,7 @@ def sed_escape(s):
     return t3
 
 
-
+@task
 def generate_buildout_cfg(buildout_cfg_path, base_template_name="buildout.cfg.template"):
     env_backup = (env.user, env.password,)
     env.user, env.password = env.adm_user, env.adm_password
@@ -733,7 +753,7 @@ options.db_password = %s
     (env.user, env.password,) = env_backup 
     return
 
-
+@task
 def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password):
     """Clone an appserver repository and setup buildout.cfg"""
     env.user = adm_user
@@ -774,7 +794,7 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
     generate_buildout_cfg(buildout_cfg_path)
     print green("Repository \"%s\" cloned and buildout.cfg generated" % _AppserverRepository.repository.name)
 
-
+@task
 def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_password):
     """buildout bootstrap the application by launching install.sh"""
     env.user = adm_user
@@ -784,6 +804,7 @@ def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_pass
         run('./install.sh openerp')
     print green("Appserver installed.")
 
+@task
 def openerp_remove_appserver():
     """Remoce init scripts and appserver repository"""
     env.user = env.root_user
@@ -798,7 +819,7 @@ def openerp_remove_appserver():
         run("rm -rf %s" % (repository_path,), quiet=True)
         print green("Existing repository \"%s\" removed." % repository_path)
   
-
+@task
 def openerp_create_services(root_user=env.root_user, root_password=env.root_password):
     """Create the openerp services (classic and gunicorn) and default to openerp classic"""
     env.user = root_user
@@ -823,7 +844,7 @@ def openerp_create_services(root_user=env.root_user, root_password=env.root_pass
 
     print green("OpenERP services created.")
 
-
+@task
 def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.root_password):
     """Stop server, remove init-script links, delete system scripts"""
     env.user = root_user
@@ -844,6 +865,7 @@ def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.
 
     print green("OpenERP init scripts removed.")
 
+@task
 def install_openerp_application_server():
     """Install an OpenERP application server (without database)."""
     sys_install_openerp_prerequisites()
@@ -864,7 +886,7 @@ def install_openerp_application_server():
     
     reboot()
 
-
+@task
 def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, phase_4=True, phase_5=True, phase_6=True):
     """Install a complete OpenERP appserver (including database server). You must update/upgrade system before manually"""
     
@@ -902,7 +924,7 @@ def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, 
 
     reboot()
 
-
+@task
 def openerp_archive_appserver(root_user=env.root_user, root_password=env.root_password):
     """Archive the appserver directory into a directory named appserver.archived_YYYY-MM-DD"""
     env.user = root_user
@@ -912,7 +934,7 @@ def openerp_archive_appserver(root_user=env.root_user, root_password=env.root_pa
     sudo('rm -rf %s.achived_%s' % (repository_path, datetime.date.today()))
     sudo('mv %s %s.achived_%s' % (repository_path, repository_path, datetime.date.today(),))
 
-
+@task
 def openerp_reinstall_appserver():
     """Re-install OpenERP appserver"""
     sys_create_openerp_user()
@@ -933,6 +955,7 @@ def openerp_reinstall_appserver():
     
     reboot()
 
+@task
 def stop_openerp_service():
     """Stop openerp service"""
     # We switch to root_user, but we preserve active usert
@@ -947,6 +970,7 @@ def stop_openerp_service():
     env.password = backup_password 
     print green("openerp-server stopped")
 
+@task
 def start_openerp_service():
     """Start openerp service"""
     # We switch to root_user, but we preserve active usert
@@ -961,6 +985,7 @@ def start_openerp_service():
     env.password = backup_password 
     print green("openerp-server started")
 
+@task
 def update_appserver(database=None, addons_list='all'):
     """buildout the appserver, run an update -d 'database' -u 'addons_list' then restart the openerp service. eg. update_appserver:sido_dev"""
     env.user = env.adm_user
@@ -990,18 +1015,24 @@ def update_appserver(database=None, addons_list='all'):
     
     start_openerp_service()
 
-def ssh(user='adm_user', root_user=env.root_user, root_password=env.root_password):
+@task
+def ssh(user='adm_user'):
     "Launch SSH session onto host"
+    env.user = env.adm_user
+    env.password = env.adm_password
+
     if user != 'adm_user':
         ssh_user = env.root_user
         ssh_password = env.root_password
     else:
         ssh_user = env.adm_user
         ssh_password = env.adm_password
+    
     print "Password= "+ blue("%s" % ssh_password)
+    
     ssh = subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])
 
-
+@task
 def deploy_start(databases=None, refspec=None, adm_user=env.adm_user, adm_password=env.adm_password):
     """Deploy version designed by refspec param and update databases"""
     # if refspec is unspecifed will checkout latest version of branch master or default
@@ -1077,19 +1108,22 @@ def deploy_start(databases=None, refspec=None, adm_user=env.adm_user, adm_passwo
             continue
         with cd(_AppserverRepository.repository.path):
             command_line = 'bin/start_openerp -d %s -u %s --stop-after-init' % (database_name, env.addons_list,)
-            retval = run(command_line, warn_only=True)
+            my_err = StringIO()
+            retval = run(command_line, warn_only=True, stderr=my_err)
+            print my_err
+            import pudb ; pudb.set_trace()
             # TODO: this command always succeeds. So we need to check stderr for ERROR: or Traceback
-            # import pudb ; pudb.set_trace()
             if True: # stderr is clean
                 print green("OpenERP server update succeded:")
                 print green("  - database = %s" % database_name)
                 print green("  - addons_list = %s" % env.addons_list)
             else:
-                print red("OpenERP Server update failed!")
+                print red("OpenERP Server update failed for database: %s." % database_name)
+                sys.exit(1)
 
     start_openerp_service()
 
-
+@task
 def deploy_commit():
     """Simply remove deploy.lock"""
     lock_file_path = os.path.join(env.muppy_transactions_directory, 'deploy.lock')
@@ -1105,17 +1139,4 @@ def deploy_commit():
     print magenta("Note that deploy_commit leave backups files untouched.")
 
 
-#
-# Vagrant
-#
-# Update Virtualbox additions
-#
-# sudo apt-get -y install build-essential zlib1g-dev libssl-dev libreadline-dev make curl git-core
-# sudo apt-get -y install linux-headers-server
-# Mount VirtualBox Additions and install it
-# mount /dev/cdrom /mnt
-# sudo /mnt/VBoxLinuxAdditions.run
-# sudo umount /mnt
 
-# Remove the linux headers to keep things pristine
-# sudo apt-get -y remove linux-headers-server
