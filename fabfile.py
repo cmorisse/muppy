@@ -55,7 +55,7 @@ env.db_host = (config_parser.has_option('env', 'db_host') and config_parser.get(
 env.db_port = (config_parser.has_option('env', 'db_port') and config_parser.get('env', 'db_port')) or '5432'
 
 
-env.customer_directory = (config_parser.has_option('env', 'customer_directory') and config_parser.get('env', 'customer_directory')) or 'demo'
+env.customer_directory = (config_parser.has_option('env', 'customer_directory') and config_parser.get('env', 'customer_directory')) or 'muppy'
 
 env.customer_path = "/opt/openerp/%s" % (env.customer_directory,)
 
@@ -555,11 +555,11 @@ def user_get_groups(user_name):
 
 
 @task
-def user_set_password(user_name):
+def user_set_password(user_name, user_password):
     env.user = env.root_user
     env.password = env.root_password
     # set password for adm_user
-    sudo("echo '%s:%s' > pw.tmp" % (user_name, password,), quiet=True)
+    sudo("echo '%s:%s' > pw.tmp" % (user_name, user_password,), quiet=True)
     sudo("sudo chpasswd < pw.tmp", quiet=True)
     sudo("rm pw.tmp", quiet=True)
     print green("User \"%s\" password set." % user_name)
@@ -806,7 +806,7 @@ def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_pass
 
 @task
 def openerp_remove_appserver():
-    """Remoce init scripts and appserver repository"""
+    """Remove init scripts and appserver repository"""
     env.user = env.root_user
     env.password = env.root_password
 
