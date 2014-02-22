@@ -30,7 +30,7 @@ def parse_config(config_parser):
 
 @task
 def psql(database='postgres'):
-    """:[[database]] - Open PSQL and connect to [[database]] if supplied"""
+    """:[[database]] - Open PSQL and connect to the 'postgres' database or [[database]] if supplied"""
     env.user = env.adm_user
     env.password = env.adm_password
 
