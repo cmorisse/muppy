@@ -13,7 +13,7 @@ Installed website is run by apache with the 'www-data' user.
 class _MagentoConfig:
     pass
 
-def _magento_parse_config(config_parser):
+def magento_parse_config(config_parser):
     if config_parser.get('magento', 'install_magento') and eval(config_parser.get('magento', 'install_magento')):
       _MagentoConfig.apache_server_name = config_parser.get('magento', 'apache_server_name')
       up = urlparse(config_parser.get('magento', 'url'))
