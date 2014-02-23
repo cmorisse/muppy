@@ -33,3 +33,4 @@ include
 ssh_keys_temp/*.pub
 backups/
 *.box
+*.log
