@@ -392,7 +392,7 @@ def pg_backup(database, backup_file_name=None):
     if not backup_file_name:
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         hostname = get_hostname()
-        backup_file_name = os.path.join(env.backup_directory,"%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
+        backup_file_name = os.path.join(env.postgresql.backup_root_directory, 'postgresql', "%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
 
     backup_commande_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_user, backup_file_name, database,)
     run(backup_commande_line)
