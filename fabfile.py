@@ -17,7 +17,7 @@ import postgresql
 
 import pudb
 
-__version__ = '0.2.3'
+__version__ = '0.2.4'
 
 # TODO: Installation JasperReport Server
 
@@ -76,6 +76,14 @@ if config_parser.has_section('magento'):
 # Vagrant
 if config_parser.has_section('vagrant'):
     env.vagrant = vagrant.parse_config(config_parser)
+
+#
+# PostgreSQL
+if config_parser.has_section('postgresql'):
+    env.postgresql = postgresql.parse_config(config_parser)
+
+
+
 
 # TODO: eval root, adm, pg, postgres, user and password from os.environ
 
@@ -351,6 +359,7 @@ def pg_allow_remote_access_for_EVERYONE():
     sudo("service postgresql restart")
     print green("PosgreSQL is now reachable from remote network.")
 
+
 @task
 def pg_get_databases(embedded=False):
     """Returns list of databases"""
@@ -368,6 +377,7 @@ def pg_get_databases(embedded=False):
                 print db
         return command.split('\r\n')
     return []
+
 
 @task
 def pg_backup(database, backup_file_name=None):
@@ -389,6 +399,7 @@ def pg_backup(database, backup_file_name=None):
 
     env.user, env.password = env_backup
     return
+
 
 @task
 def pg_restore(backup_file, jobs=4):
@@ -529,19 +540,22 @@ def sys_install_openerp_prerequisites():
     env.user = env.root_user
     env.password = env.root_password
 
+    # TODO All of this must move to the repository install.sh
     sudo('wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py')
     sudo('python ez_setup.py')
     sudo('rm ez_setup.py')
 
+    sudo("easy_install virtualenv==1.11.4")
+
     sudo("apt-get install -y python-dev libz-dev")
-    sudo("apt-get install -y bzr mercurial git python-virtualenv vim")
+    sudo("apt-get install -y bzr mercurial git")
     sudo("apt-get install -y libxml2-dev libxslt1-dev")
     sudo("apt-get install -y libpq-dev")
     sudo("apt-get install -y libldap2-dev libsasl2-dev")
     sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev liblcms1-dev libwebp-dev libtiff-dev")
     sudo("apt-get install -y libyaml-dev")
 
-    sudo("apt-get install -y curl htop")
+    sudo("apt-get install -y curl htop vim")
 
     print green("OpenERP prerequisites installed.")
 
@@ -700,9 +714,10 @@ def sys_create_backup_directory(root_user=env.root_user, root_password=env.root_
     env.password = root_password
 
     sudo('mkdir -p %s' % env.backup_directory, quiet=True)
+
     sudo('chown -R %s: %s' % (env.adm_user, env.backup_directory,), quiet=True)
     sudo('chmod 755 %s' % env.backup_directory, quiet=True)
-    print green("OpenERP backup directory: \"%s\" created." % env.backup_directory)
+    print green("Muppy backup directory: \"%s\" created." % env.backup_directory)
 
 @task
 def sys_create_buffer_directory(root_user=env.root_user, root_password=env.root_password):
@@ -776,7 +791,7 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
 
     # Clone repository
     with cd(env.customer_path):
-        run(_AppserverRepository.repository.clone_command_line, quiet=True)
+        run(_AppserverRepository.repository.clone_command_line, quiet=False)
     print green("Repository \"%s\" cloned." % repository_path)
 
     if _AppserverRepository.repository.version:
@@ -986,6 +1001,7 @@ def start_openerp_service():
     env.password = backup_password 
     print green("openerp-server started")
 
+
 @task
 def update_appserver(database=None, addons_list='all'):
     """buildout the appserver, run an update -d 'database' -u 'addons_list' then restart the openerp service. eg. update_appserver:sido_dev"""
@@ -1016,9 +1032,10 @@ def update_appserver(database=None, addons_list='all'):
     
     start_openerp_service()
 
+
 @task
 def ssh(user='adm_user'):
-    "Launch SSH session onto host"
+    """:[[root]] Launch an SSH session into host using either adm_user (default) or root_user if [[root]] parameter is supplied"""
     env.user = env.adm_user
     env.password = env.adm_password
 
@@ -1201,8 +1218,8 @@ def deploy_rollback(jobs=8):
         run(_AppserverRepository.repository.get_checkout_command_line(refspec))
 
     # we restore all databases with status = error
-    databases_backups_dict = { db:lock_file_parser.get("databases_backups",db) for db in lock_file_parser.options("databases_backups") }
-    update_database_statuses = { db:lock_file_parser.get("update_database_statuses",db) for db in lock_file_parser.options("update_database_statuses") }
+    databases_backups_dict = {db: lock_file_parser.get("databases_backups", db) for db in lock_file_parser.options("databases_backups")}
+    update_database_statuses = {db: lock_file_parser.get("update_database_statuses", db) for db in lock_file_parser.options("update_database_statuses")}
 
     for db_name, db_status in update_database_statuses.items():
         backup_file = databases_backups_dict[db_name]
@@ -1256,5 +1273,12 @@ def deploy_commit():
     print magenta("INFO: Note that deploy_commit leave backups files untouched.")
     print blue("INFO: deploy_commit finished.")
     sys.exit(0)
+
+
+# git show --format=short -s <<refspec>>
+#
+# Il nous faut:
+# - appserver.checkout ==> git checkout + buildout
+# - appserver.update ==> start_openerp -u db -all
 
 
