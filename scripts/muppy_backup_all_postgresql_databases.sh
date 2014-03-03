@@ -12,9 +12,9 @@
 #
 # 
 BACKUP_ROOT=_@@backup_root_directory
-BACKUP_PATH=$BACKUP_ROOT/postgresql
+BACKUP_PATH=_@@backup_files_directory
 EMAIL_RECIPIENTS='_@@backup_email_recipients'
-BACKUP_LOG_FILENAME=`date +%Y%m%d_%H%M%S`__postgresql_backup__hostname.log
+BACKUP_LOG_FILENAME=`date +%Y%m%d_%H%M%S`__postgresql_backup__`hostname`.log
 BACKUP_RETENTION_PERIOD_ON_LOCAL_SERVER=_@@backup_retention_period_in_days
 PGUSER='_@@pg_user'
 PGPASSWORD='_@@pg_password'
@@ -50,7 +50,7 @@ echo >> $BACKUP_PATH/$BACKUP_LOG_FILENAME
 for DATABASE_NAME in ${DB_NAME_ARRAY[@]}
 do
 	# Proceed with dump
-	BACKUP_FILENAME=`date +%Y%m%d_%H%M%S__${DATABASE_NAME}__hostname`.pg_dump
+	BACKUP_FILENAME=`date +%Y%m%d_%H%M%S`__${DATABASE_NAME}__`hostname`.pg_dump
 	LATEST_FILENAME=latest_postgresql_backup_db__${DATABASE_NAME}__`hostname`.pg_dump
 	export PGPASSWORD=$PGPASSWORD && pg_dump -h localhost -U $PGUSER -Fc -f$BACKUP_PATH/$BACKUP_FILENAME $DATABASE_NAME >> $BACKUP_PATH/$BACKUP_LOG_FILENAME
 	cp $BACKUP_PATH/$BACKUP_FILENAME $BACKUP_PATH/$LATEST_FILENAME

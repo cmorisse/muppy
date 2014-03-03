@@ -14,6 +14,7 @@ import muppy_utils
 from muppy_magento import *
 import vagrant
 import postgresql
+import openerp
 
 import pudb
 
@@ -79,8 +80,7 @@ if config_parser.has_section('vagrant'):
 
 #
 # PostgreSQL
-if config_parser.has_section('postgresql'):
-    env.postgresql = postgresql.parse_config(config_parser)
+env.postgresql = postgresql.parse_config(config_parser)
 
 
 
@@ -167,7 +167,6 @@ class Repository(object):
     def path(self):
         return os.path.join(self.base_path, self.destination_directory)
 
-    @property
     def get_refspec_command_line(self):
         """Returns shell command to retrieve current active revision in repository"""
         if self.dvcs == 'git':
@@ -176,12 +175,19 @@ class Repository(object):
             # mercurial
             return 'hg id -i'
 
+    def get_show_current_rev_command_line(self):
+        """Returns shell command to display info about current revision in repository"""
+        if self.dvcs == 'git':
+            return 'git show --format=medium -s HEAD'
+        elif self.dvcs == 'hg':
+            return 'hg sum'
+
     def get_fetch_command_line(self, source=''):
         """Returns a git fetch or hg pull command line"""
         if self.dvcs == 'git':
             return 'git fetch origin %s' % source
         elif self.dvcs == 'hg':  # mercurial
-            return 'hg pull %s' % remote
+            return 'hg pull %s' % source
     
     def get_checkout_command_line(self, refspec):
         """Returns a git checkout or hg update command line"""
@@ -307,6 +313,7 @@ if config_parser.has_section('appserver_repository'):
                                                               _AppserverRepository.password,
                                                               _AppserverRepository.appserver_url,
                                                               env.customer_path)
+    env.openerp = _AppserverRepository
 else:
     print red("Error: [appserver_repository] section missing in config file")
     exit(-1)
@@ -359,138 +366,6 @@ def pg_allow_remote_access_for_EVERYONE():
     sudo("service postgresql restart")
     print green("PosgreSQL is now reachable from remote network.")
 
-
-@task
-def pg_get_databases(embedded=False):
-    """Returns list of databases"""
-    # 'psql -h localhost -U openerp --no-align --pset footer -t -c "SELECT datname FROM pg_database WHERE datistemplate = FALSE ;" postgres'    
-    env_backup = (env.user, env.password,)
-    env.user, env.password = env.adm_user, env.adm_password
-    get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -U %s --no-align --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host, env.db_user)
-    command = run(get_databases_cl, quiet=True)
-    env.user, env.password = env_backup
-    if command.succeeded:
-        if not embedded:
-            db_list = command.split('\r\n')
-            print
-            for db in db_list:
-                print db
-        return command.split('\r\n')
-    return []
-
-
-@task
-def pg_backup(database, backup_file_name=None):
-    """Backup a database and put backup file into {{backup_directory}}. If backup_file_name is undefined, generate a default backup name"""
-    env_backup = (env.user, env.password,)
-    env.user, env.password = env.adm_user, env.adm_password
-
-    if not database:
-        print red("ERROR: missing required database parameter.")
-        exit(0)
-
-    if not backup_file_name:
-        timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        hostname = get_hostname()
-        backup_file_name = os.path.join(env.postgresql.backup_root_directory, 'postgresql', "%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
-
-    backup_commande_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_user, backup_file_name, database,)
-    run(backup_commande_line)
-
-    env.user, env.password = env_backup
-    return
-
-
-@task
-def pg_restore(backup_file, jobs=4):
-    """Restore a database using a backup file stored in {{backup_directory}}."""
-    env_backup = (env.user, env.password,)
-    env.user, env.password = env.adm_user, env.adm_password
-
-    if not backup_file:
-        print red("ERROR: missing required backup_file_name parameter.")
-        exit(0)
-
-    backup_file_path = os.path.join(env.backup_directory, backup_file)
-    if not exists(backup_file_path):
-        print red("ERROR: missing '%s' backup file." % backup_file_path)
-        exit(0)
-
-    (timestamp, database, host,) = backup_file.split('.')[0].split('__')
-
-    if database in pg_get_databases(embedded=True):
-        dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s" % ( env.db_password, env.db_host, env.db_user, database,)
-        run(dropdb_command_line)
-
-    try:
-        jobs_number = int(jobs)
-        jobs_option = '--jobs=%s' % jobs_number
-    except Exception:
-        jobs_option = ''
-
-    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s" % ( env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
-    run(restore_command_line)
-
-    env.user, env.password = env_backup
-    return
-
-
-@task
-def pg_list_backups():
-    """List files in {{backup_directory}}."""
-    env_backup = (env.user, env.password,)
-    env.user, env.password = env.adm_user, env.adm_password
-
-    run("ls -l %s" % ( env.backup_directory,))
-
-    env.user, env.password = env_backup
-    return
-
-@task
-def pg_get_backup_file(backup_file, local_path="backups/%(host)s/%(path)s"):
-    """Download a backup file from {{backup_directory}} into local_path"""
-    env_backup = (env.user, env.password,)
-    env.user, env.password = env.adm_user, env.adm_password
-
-    if not backup_file:
-        print red("ERROR: missing required backup_file parameter")
-        exit(0)
-
-    backup_file_path = os.path.join(env.backup_directory, backup_file)
-
-    if not exists(backup_file_path):
-        print red("ERROR: backup file '%s' does not exist." % backup_file)
-        exit(0)
-
-    get(backup_file_path, local_path)
-
-    env.user, env.password = env_backup
-    return
-
-@task
-def pg_put_backup_file(local_backup_file_path=None, force=False):
-    """Upload a backup file to {{backup_directory}}. Fail if local_backup_file does not exist or remote backup file exists unless force is specified."""
-    env_backup = (env.user, env.password,)
-    env.user, env.password = env.adm_user, env.adm_password
-
-    if not local_backup_file_path or not os.path.isfile(local_backup_file_path):
-        print red("ERROR: missing required local_backup_file")
-        exit(0)
-
-    remote_backup_file_path = os.path.join(env.backup_directory, os.path.basename(local_backup_file_path))
-
-    if exists(remote_backup_file_path):
-        if not force:
-            print red("ERROR: backup file '%s' already exists in remote server backup directory. use force=True to overwrite it." % os.path.basename(local_backup_file_path))
-            exit(0)
-        confirm = prompt("Are you sure you want to upload '%s' on server '%s'. Enter YES to confirm." % (os.path.basename(local_backup_file_path), get_hostname(),), default="no", validate="YES|no")
-        if confirm != 'YES':
-            print red("Upload aborted ; remote file untouched.")
-
-    put(local_backup_file_path, env.backup_directory)
-
-    env.user, env.password = env_backup
-    return
 
 @task
 def pg_install_db_server(pg_user=env.db_user, pg_password=env.db_password):
@@ -971,67 +846,6 @@ def openerp_reinstall_appserver():
     
     reboot()
 
-@task
-def stop_openerp_service():
-    """Stop openerp service"""
-    # We switch to root_user, but we preserve active usert
-    backup_user = env.user
-    backup_password = env.password
-
-    env.user = env.root_user
-    env.password = env.root_password        
-    sudo('/etc/init.d/openerp-server stop', pty=False)
-
-    env.user = backup_user
-    env.password = backup_password 
-    print green("openerp-server stopped")
-
-@task
-def start_openerp_service():
-    """Start openerp service"""
-    # We switch to root_user, but we preserve active usert
-    backup_user = env.user
-    backup_password = env.password
-
-    env.user = env.root_user
-    env.password = env.root_password        
-    sudo('/etc/init.d/openerp-server start', pty=False)
-
-    env.user = backup_user
-    env.password = backup_password 
-    print green("openerp-server started")
-
-
-@task
-def update_appserver(database=None, addons_list='all'):
-    """buildout the appserver, run an update -d 'database' -u 'addons_list' then restart the openerp service. eg. update_appserver:sido_dev"""
-    env.user = env.adm_user
-    env.password = env.adm_password
-
-    print blue("\"Stopping\" server")
-    stop_openerp_service()
-
-    print blue("\"Updating\" appserver repository: %s" % (_AppserverRepository.repository.path,))
-    with cd(_AppserverRepository.repository.path):
-        run(_AppserverRepository.repository.pull_command_line)
-
-    print blue("\"Buildouting\" server")
-    with cd(_AppserverRepository.repository.path):
-        run('bin/buildout')
-        if database and addons_list:
-            run('bin/start_openerp -d %s -u %s --stop-after-init' % (database, addons_list))
-            print green("OpenERP server updated:")
-            print green("  - addons_list = %s" % addons_list)
-            print green("  - database = %s" % database)
-        else:
-            print red("No database update:")
-            if not addons_list:
-                print red("  - no value for addons_list parameter")
-            if not database:
-                print red("  - no value for database parameter")
-    
-    start_openerp_service()
-
 
 @task
 def ssh(user='adm_user'):
@@ -1049,236 +863,4 @@ def ssh(user='adm_user'):
     print "Password= "+ blue("%s" % ssh_password)
     
     ssh = subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])
-
-@task
-def deploy_start(databases=None, new_refspec=None):
-    """:"db_name1;db_name2"[[,refspec]] - Deploy version designed by [[refspec]] param and update databases"""
-    # if refspec is unspecifed will checkout latest version of branch master or default
-    # if databases is unspecified, will update database designed by env.test_database_name. 
-    # to update no database, specify databases=- as '-'' is forbidden by postgres in database name
-    # NOTE: We do backup the postgres db but we don't restore it in case deploy file. You must
-    #       restore by hand if needed
-    
-    env.user = env.adm_user
-    env.password = env.adm_password
-    with cd(_AppserverRepository.repository.path):
-        old_refspec = run(_AppserverRepository.repository.get_refspec_command_line, quiet=True)
-    print blue("Current refspec: %s" % old_refspec)
-
-    # compute databases default values
-    if not databases:
-        databases = '%s;postgres' % env.test_database_name
-    elif databases == '-':
-        databases = None
-
-    # let's check that databases exist
-    requested_database_list = databases and databases.split(';') or []
-    if requested_database_list and not 'postgres' in requested_database_list:
-        requested_database_list.append('postgres')
-    
-    existing_database_list = pg_get_databases(True)
-    database_not_found = False
-    print blue("Checking requested databases exist: "),
-    if not requested_database_list:
-        print magenta("skipped")
-    else:
-        print
-
-    for requested_database in requested_database_list:
-        if requested_database not in existing_database_list:
-            database_not_found = True
-            print red("  - %s : Error" % requested_database)
-        else:
-            print green("  - %s : Ok" % requested_database)
-    if database_not_found:
-        print red("deployment aborted.")
-        exit(1)
-
-    # We atomicaly generate a lock file or fail
-    timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-    hostname = get_hostname()
-    database_dict = { requested_database: os.path.join(env.backup_directory,"%s__%s__%s.pg_dump" % (timestamp, requested_database, hostname,)) for requested_database in requested_database_list}
-    file_list = ",".join(database_dict.values())
-    
-    # we open a log file
-    log_file_name = "%s__%s__deploy.log" % (timestamp, hostname,)
-    log_file = open(log_file_name, "w")
-    print blue("INFO: Deploy log file is '%s'" % log_file_name)
-
-    # generate lock file content
-    lock_file_content = '[deploy]\nlog_file = %s\nold_refspec = %s\nnew_refspec = %s\ndatabases_to_update = %s' % (log_file_name, old_refspec, new_refspec, databases, )
-    lock_file_path = os.path.join(env.muppy_transactions_directory, 'deploy.lock')
-    create_lock = run('set -o noclobber && echo "%s" > %s' % (lock_file_content, lock_file_path,), quiet=True)
-    if create_lock.failed:
-        print red("ERROR: Unable to acquire %s" % lock_file_path)
-        exit(1)
-
-    # We have the lock, let's stop server and backup db
-    stop_openerp_service()
-
-    # Now let's backup the databases
-    update_lock_file = run('echo "\n[databases_backups]" >> %s' % (lock_file_path,), quiet=True)
-    if update_lock_file.failed:
-        print red("ERROR: Unable to update lock file: '%s'" % lock_file_path)
-        exit(1)
-
-    for database_name, backup_file_name in database_dict.items():
-        pg_backup(database_name, backup_file_name)
-        lock_file_content = '%s = %s' % (database_name, backup_file_name,)
-        update_lock_file = run('echo "%s" >> %s' % (lock_file_content, lock_file_path,), quiet=True)
-        if update_lock_file.failed:
-            print red("ERROR: Unable to update lock file: '%s' with '%s'" % (lock_file_path, lock_file_content,))
-            exit(1)
-
-    # Now we checkout the repos with requested new_refspec
-    print blue("\nCheckout refspec '%s' in '%s'." % (new_refspec, _AppserverRepository.repository.path))
-    with cd(_AppserverRepository.repository.path):
-        run(_AppserverRepository.repository.get_fetch_command_line())
-        run(_AppserverRepository.repository.get_checkout_command_line(new_refspec))
-
-    # we update (openerp sense) all modules on specified database(s)
-
-    lock_file_content = "\n[update_database_statuses]"
-    update_lock_file = run('echo "%s" >> %s' % (lock_file_content, lock_file_path,), quiet=True)
-    if update_lock_file.failed:
-        print red("ERROR: Unable to update lock file: '%s' with '%s'" % (lock_file_path, lock_file_content,))
-        exit(1)
-
-    error_during_update = False
-    for database_name, backup_file_name in database_dict.items():
-        if database_name == 'postgres':
-            continue
-        with cd(_AppserverRepository.repository.path):
-            print blue("INFO: Updating database '%s' for addons: '%s'." % (database_name, env.addons_list,))
-            command_line = 'bin/start_openerp -d %s -u %s --stop-after-init' % (database_name, env.addons_list,)
-            stdout = StringIO.StringIO()
-            # bin/start_openerp --update always succeed. So we need to check stdout to find ERROR or Traceback
-            retval = run(command_line, warn_only=True, stdout=stdout)
-            error_log = stdout.getvalue()
-            log_file.write(error_log)
-
-            update_failed = 'ERROR' in error_log or 'Traceback' in error_log
-            if update_failed: 
-                error_during_update = True
-                lock_file_content = "%s = error" % database_name
-                update_lock_file = run('echo "%s" >> %s' % (lock_file_content, lock_file_path,), quiet=True)
-                if update_lock_file.failed:
-                    print red("ERROR: Unable to update lock file: '%s' with '%s'" % (lock_file_path, lock_file_content,))
-                    exit(1)
-                print red("ERROR: Database '%s' update failed for addons='%s'. See detail in log '%s'." % (database_name, env.addons_list, log_file_name,))
-            else:  # stderr is clean
-                print green("Database '%s' update succeded for addons=%s. See detail in log '%s'." % (database_name, env.addons_list, log_file_name))
-
-                lock_file_content = "%s = ok" % database_name
-                update_lock_file = run('echo "%s" >> %s' % (lock_file_content, lock_file_path,), quiet=True)
-                if update_lock_file.failed:
-                    print red("ERROR: Unable to update lock file: '%s' with '%s'" % (lock_file_path, lock_file_content,))
-                    exit(1)
-
-    log_file.close()
-    put(log_file_name, os.path.join(env.muppy_transactions_directory, log_file_name))
-
-    if error_during_update:
-        print red("ERROR: One or more update failed. OpenERP Server won't be restarted.")
-        sys.exit(1)
-
-    print green("Deploy ok ; restarting OpenERP server")
-    start_openerp_service()
-    sys.exit(0)
-
-
-@task
-def deploy_rollback(jobs=8):
-    """[[jobs=8]] - Rollback a failed deploy (checkout repo to pre deploy commit and restore all updated databases using [[jobs]] cf. pg_restore doc)"""
-    env.user = env.adm_user
-    env.password = env.adm_password
-    lock_file_path = os.path.join(env.muppy_transactions_directory, 'deploy.lock')
-
-    if not exists(lock_file_path):
-       print red("ERROR: Cannot Rollback ; lock file '%s' does not exists." % lock_file_path)
-       exit(1)
-
-    #
-    # Reading lock file in a ConfigParser
-    #
-    lock_file_object = StringIO.StringIO()
-    get(lock_file_path, lock_file_object)
-    # Fabric returns a file object seeked at the end
-    lock_file_object.seek(0)    
-    lock_file_parser = ConfigParser.ConfigParser()
-    lock_file_parser.readfp(lock_file_object)
-
-    stop_openerp_service()
-
-    # We checkout the repo back to old_refspec
-    refspec = lock_file_parser.get("deploy", "old_refspec")
-    print blue("\nCheckout refspec '%s' in '%s'." % (refspec, _AppserverRepository.repository.path))
-    with cd(_AppserverRepository.repository.path):
-        run(_AppserverRepository.repository.get_fetch_command_line())
-        run(_AppserverRepository.repository.get_checkout_command_line(refspec))
-
-    # we restore all databases with status = error
-    databases_backups_dict = {db: lock_file_parser.get("databases_backups", db) for db in lock_file_parser.options("databases_backups")}
-    update_database_statuses = {db: lock_file_parser.get("update_database_statuses", db) for db in lock_file_parser.options("update_database_statuses")}
-
-    for db_name, db_status in update_database_statuses.items():
-        backup_file = databases_backups_dict[db_name]
-        if db_status == 'error':
-            print magenta("WARNING: Database '%s' update failed during deploy, restoring it using backup file '%s'" % (db_name, backup_file,))
-            pg_restore(backup_file, jobs)
-        elif db_status == 'ok':
-            print magenta("WARNING: Database '%s' update succeeded during deploy, restoring it using backup file '%s'" % (db_name, backup_file,))
-            pg_restore(backup_file, jobs)
-
-    start_openerp_service()
-
-    # we archive lockfile
-    lockfile_archive_name = lock_file_parser.get("deploy", "log_file").split('.')[0]+".archive.cfg"
-    lockfile_archive_path = os.path.join(env.muppy_transactions_directory, lockfile_archive_name)
-    print blue("Archiving deploy lock file to '%s'." % lockfile_archive_path)
-    run('mv %s %s' % (lock_file_path, lockfile_archive_path,), quiet=True)
-
-    print magenta("WARNING: Note that deploy_rollback leave backup files untouched.")
-    print blue("INFO: deploy_rollback finished.")
-    sys.exit(0)
-
-
-@task
-def deploy_commit():
-    """Simply remove deploy.lock on server."""
-    env.user = env.adm_user
-    env.password = env.adm_password
-    lock_file_path = os.path.join(env.muppy_transactions_directory, 'deploy.lock')
-    if not exists(lock_file_path):
-       print red("ERROR: Cannot Commit ; lock file '%s' does not exists." % lock_file_path)
-       exit(1)
-
-    #
-    # Reading lock file in a ConfigParser
-    #
-    lock_file_object = StringIO.StringIO()
-    get(lock_file_path, lock_file_object)
-    # Fabric returns a file object seeked at the end
-    lock_file_object.seek(0)    
-    lock_file_parser = ConfigParser.ConfigParser()
-    lock_file_parser.readfp(lock_file_object)
-
-
-    # we archive lockfile
-    lockfile_archive_name = lock_file_parser.get("deploy", "log_file").split('.')[0]+".archive.cfg"
-    lockfile_archive_path = os.path.join(env.muppy_transactions_directory, lockfile_archive_name)
-    print blue("INFO: Archiving deploy lock file to '%s'." % lockfile_archive_path)
-    run('mv %s %s' % (lock_file_path, lockfile_archive_path,), quiet=True)
-
-    print magenta("INFO: Note that deploy_commit leave backups files untouched.")
-    print blue("INFO: deploy_commit finished.")
-    sys.exit(0)
-
-
-# git show --format=short -s <<refspec>>
-#
-# Il nous faut:
-# - appserver.checkout ==> git checkout + buildout
-# - appserver.update ==> start_openerp -u db -all
-
 
