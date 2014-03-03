@@ -18,7 +18,7 @@ import openerp
 
 import pudb
 
-__version__ = '0.2.4'
+__version__ = '0.2.5'
 
 # TODO: Installation JasperReport Server
 
