@@ -183,7 +183,7 @@ def deploy_start(databases=None, new_refspec=None):
     # We atomicaly generate a lock file or fail
     timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     hostname = get_hostname()
-    database_dict = {requested_database: os.path.join(env.backup_directory, "%s__%s__%s.pg_dump" % (timestamp, requested_database, hostname,)) for requested_database in requested_database_list}
+    database_dict = {requested_database: os.path.join(env.postgresql.backup_files_directory, "%s__%s__%s.pg_dump" % (timestamp, requested_database, hostname,)) for requested_database in requested_database_list}
     file_list = ",".join(database_dict.values())
 
     # open a log file
