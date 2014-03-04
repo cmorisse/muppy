@@ -126,6 +126,7 @@ def check_refspec(refspec, embedded=False):
         print yellow("WARNING: check refspec not implemented with mercurial")
         return True
     with cd(env.openerp.repository.path):
+        run('git fetch')
         result = run("git show -s %s" % refspec, quiet=True, warn_only=True)
 
     if not embedded:
