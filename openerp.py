@@ -326,7 +326,7 @@ def deploy_rollback(jobs=8):
 
 @task
 def deploy_commit():
-    """Simply remove deploy.lock on server."""
+    """Remove deploy.lock on server (archive it)."""
     env.user = env.adm_user
     env.password = env.adm_password
     lock_file_path = os.path.join(env.muppy_transactions_directory, 'deploy.lock')
