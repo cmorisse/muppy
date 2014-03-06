@@ -55,6 +55,7 @@ def get_databases_list(embedded=False):
     env.user, env.password = env.adm_user, env.adm_password
     get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -U %s --no-align --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host, env.db_user)
     command = run(get_databases_cl, quiet=True)
+
     env.user, env.password = env_backup
     if command.succeeded:
         if not embedded:
@@ -63,6 +64,14 @@ def get_databases_list(embedded=False):
             for db in db_list:
                 print db
         return command.split('\r\n')
+    return []
+
+def local_get_databases_list():
+    """Returns list of existing databases on local database server"""
+    get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -U %s --no-align --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host, env.db_user)
+    command = local(get_databases_cl, capture=True)
+    if command.succeeded:
+        return command.split('\n')
     return []
 
 
@@ -88,6 +97,35 @@ def backup(database, backup_file_name=None):
 
 
 @task
+def local_restore(backup_file_path, jobs=4):
+    """:backup_file_path - Restore a database using specified backup file path absolute or relative from muppy working directory."""
+
+    if not backup_file_path:
+        print red("ERROR: missing required backup_file parameter.")
+        exit(0)
+
+    if not os.path.exists(backup_file_path):
+        print red("ERROR: missing '%s' backup file." % backup_file_path)
+        exit(0)
+
+    (timestamp, database, host,) = os.path.basename(backup_file_path).split('.')[0].split('__')
+
+    if database in local_get_databases_list():
+        dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s" % (env.db_password, env.db_host, env.db_user, database,)
+        local(dropdb_command_line)
+
+    try:
+        jobs_number = int(jobs)
+        jobs_option = '--jobs=%s' % jobs_number
+    except Exception:
+        jobs_option = ''
+
+    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s" % ( env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
+    local(restore_command_line)
+
+
+
+@task
 def restore(backup_file, jobs=4):
     """:backup_file - Restore a database using specified backup file stored in {{backup_directory}}."""
     env_backup = (env.user, env.password,)
@@ -104,7 +142,7 @@ def restore(backup_file, jobs=4):
 
     (timestamp, database, host,) = backup_file.split('.')[0].split('__')
 
-    if database in get_databases_list(embedded=True):
+    if database in get_databases_list(embedded=True, run_local=run_local):
         dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s" % (env.db_password, env.db_host, env.db_user, database,)
         run(dropdb_command_line)
 
@@ -116,7 +154,7 @@ def restore(backup_file, jobs=4):
 
     restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s" % ( env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
     run(restore_command_line)
-
+    
     env.user, env.password = env_backup
     return
 
