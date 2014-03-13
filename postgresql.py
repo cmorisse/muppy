@@ -142,7 +142,7 @@ def restore(backup_file, jobs=4):
 
     (timestamp, database, host,) = backup_file.split('.')[0].split('__')
 
-    if database in get_databases_list(embedded=True, run_local=run_local):
+    if database in get_databases_list(embedded=True):
         dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s" % (env.db_password, env.db_host, env.db_user, database,)
         run(dropdb_command_line)
 
@@ -259,7 +259,7 @@ def install_backup_script():
 
 @task
 def install_backup_cron():
-    """Add muppy postgresql backup script to a daily cron"""
+    """Add muppy postgresql backup script to a daily cron (needs a postgresql.install_backup_script before)"""
     env.user = env.adm_user
     env.password = env.adm_password
 
