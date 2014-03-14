@@ -465,9 +465,10 @@ def user_search(user_name):
     :return: id of user
     :rtype: str
     """
-    env.user = env.root_user
-    env.password = env.root_password
+    env_backup = (env.user, env.password,)
+    env.user, env.password = env.root_user, env.root_password
     lookup = sudo('id -u %s 2>/dev/null' % user_name, warn_only=True, quiet=True)
+    (env.user, env.password,) = env_backup 
     return lookup
 
 @task
@@ -778,11 +779,16 @@ def install_openerp_application_server():
     reboot()
 
 @task
-def install_openerp_standalone_server(phase_1=True, phase_2=True, phase_3=True, phase_4=True, phase_5=True, phase_6=True):
+def install_openerp_standalone_server(phase_1='True', phase_2='True', phase_3='True', phase_4='True', phase_5='True', phase_6='True'):
     """Install a complete OpenERP appserver (including database server). You must update/upgrade system before manually"""
     
-    #phase_1 = phase_2 = phase_3 = phase_4 = phase_5 = phase_6 = False
-        
+    phase_1 = eval(phase_1)
+    phase_2 = eval(phase_2)
+    phase_3 = eval(phase_3)
+    phase_4 = eval(phase_4)
+    phase_5 = eval(phase_5)
+    phase_6 = eval(phase_6)
+    
     # Install PostgreSQL
     if phase_1:
         pg_install_server()
