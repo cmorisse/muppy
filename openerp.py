@@ -30,6 +30,46 @@ def stop_service():
     env.password = backup_password
     print green("openerp-server stopped")
 
+
+@task
+def new_stop_service():
+    """Stop OpenERP service"""
+    #TODO: rework env backup
+    #TODO: stop openerp or gunicorn
+    #TODO:  rework when admuser can restart 
+
+    import pudb ; pudb.set_trace()
+
+    # We switch to root_user, but we preserve active user
+
+    backup = env.user, env.password
+
+    env.user = env.root_user
+    env.password = env.root_password
+    #sudo('/etc/init.d/openerp-server stop', pty=False)
+
+    # we wait 3 seconds and check that are no openerp_process
+    # if any we kill them
+    time.sleep(3)
+
+    # Unix command is:  
+    #    ps -e | grep [o]pener | cut -d' ' -f1
+    #    ps -e -o %p,%c | grep [o]pener | cut -d',' -f1
+    # Note that we search for opener (without the p) because of ps name length
+    # restriction
+    result = sudo("ps -e -o %p,%c | grep [o]pener | cut -d',' -f1", quiet=True)
+    if result.failed:
+        print red("ERROR: failed to ps")
+        sys.exit(1)
+
+    print "result=%s" % result
+
+    env.user, env.password = backup
+    print green("INFO: OpenERP Service stopped")
+
+
+
+
 @task
 def start_service():
     """Start OpenERP service"""
@@ -90,7 +130,7 @@ def checkout_revision(refspec=None, launch_buildout='True'):
 
 @task
 def update_appserver(database=None, addons_list='all'):
-    """:database,addons_list=all - Stop server, update OpenERP <<addons_list>> on <<database>>ons_list' then restart the server."""
+    """:database[[,addons_list=all]] - Stop server, update OpenERP {{addons_list}} on {{database}} then restart the server."""
     env.user = env.adm_user
     env.password = env.adm_password
 
