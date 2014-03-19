@@ -106,7 +106,7 @@ def show_current_revision():
 
 @task
 def checkout_revision(refspec=None, launch_buildout='True'):
-    """:refspec[[,launch_buildout]] - Checkout openerp repository to given refspec and do a buildout depending on the buildout param (default=True)."""
+    """:commit[[,launch_buildout]] - Checkout openerp repository to given commit (or branch) and do a buildout depending on launch_buildout (default=True)."""
     env.user = env.adm_user
     env.password = env.adm_password
     #TODO: Test if refspec exists before
