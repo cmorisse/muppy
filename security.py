@@ -20,17 +20,22 @@ TEMPLATE_CFG_SECTION = """
 # Allowed values are = True, 1, False, 0
 #install = False
 
-# WIP Feature : not yet integrated in Muppy
-# trusted ips will be used with:
-# - sudo ufw allow from RFC918_addr
+#
+# trusted_ips
+#
+# trusted_ips:
+#  - have unrestricted access on serveur.
+#  - must always contains public ip of user to be able to launch setup
+#  - generate "sudo ufw allow from RFC918_addr"
 #       => where address is an ip or/RFC918 Networks
-trusted_ips =
-        8.8.8.8        # Office 1Bureau CMo
-        9.9.9.9        # Office 2
-        # Customers IPs
-        10.10.10.10    # SF Office
-
-
+#trusted_ips =
+#        8.8.8.8        # Office 1
+#        9.9.9.9        # Office 2
+#        # Customers IPs
+#        10.10.10.10    # SF Office
+#
+trusted_ips = 
+#
 # Parameters to grant access to specific protocol ports
 # eg.
 # format: PROTO RFC918_src  RFC918_dest PORT
