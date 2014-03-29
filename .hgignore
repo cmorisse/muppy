@@ -35,3 +35,4 @@ backups/
 *.box
 *.log
 draft/
+bash_scripts/

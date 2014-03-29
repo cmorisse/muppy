@@ -15,10 +15,11 @@ from muppy_magento import *
 import vagrant
 import postgresql
 import openerp
+import security
 
 import pudb
 
-__version__ = '0.2.5'
+__version__ = '0.2.6'
 
 # TODO: Installation JasperReport Server
 
@@ -82,7 +83,9 @@ if config_parser.has_section('vagrant'):
 # PostgreSQL
 env.postgresql = postgresql.parse_config(config_parser)
 
-
+#
+# Security
+env.security = security.parse_config(config_parser)
 
 
 # TODO: eval root, adm, pg, postgres, user and password from os.environ
