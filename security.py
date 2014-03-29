@@ -34,7 +34,7 @@ TEMPLATE_CFG_SECTION = """
 #        # Customers IPs
 #        10.10.10.10    # SF Office
 #
-trusted_ips = 
+trusted_ips =
 #
 # Parameters to grant access to specific protocol ports
 # eg.

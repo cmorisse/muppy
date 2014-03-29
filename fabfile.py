@@ -19,7 +19,7 @@ import security
 
 import pudb
 
-__version__ = '0.2.6'
+__version__ = '0.2.7'
 
 # TODO: Installation JasperReport Server
 
@@ -86,6 +86,12 @@ env.postgresql = postgresql.parse_config(config_parser)
 #
 # Security
 env.security = security.parse_config(config_parser)
+
+#
+# Security
+import system
+env.system = system.parse_config(config_parser)
+
 
 
 # TODO: eval root, adm, pg, postgres, user and password from os.environ
@@ -402,15 +408,7 @@ def sys_install_vmware_tools():
 #
 # System related tasks
 #
-@task
-def sys_update_upgrade():
-    """Update and upgrade system (with apt-get)"""
-    env.user = env.root_user
-    env.password = env.root_password
-    
-    sudo("apt-get update --fix-missing")
-    sudo("apt-get upgrade -y")
-    print green("System updated and upgraded")
+
 
 @task
 def sys_install_openerp_prerequisites():
@@ -763,6 +761,10 @@ def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.
 @task
 def install_openerp_application_server():
     """Install an OpenERP application server (without database)."""
+
+    if env.system.install:
+        system.setup_locale()
+
     sys_install_openerp_prerequisites()
     
     sys_create_openerp_user()
@@ -782,44 +784,49 @@ def install_openerp_application_server():
     reboot()
 
 @task
-def install_openerp_standalone_server(phase_1='True', phase_2='True', phase_3='True', phase_4='True', phase_5='True', phase_6='True'):
+def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True', phase3='True', phase4='True', phase5='True', phase6='True'):
     """Install a complete OpenERP appserver (including database server). You must update/upgrade system before manually"""
     
-    phase_1 = eval(phase_1)
-    phase_2 = eval(phase_2)
-    phase_3 = eval(phase_3)
-    phase_4 = eval(phase_4)
-    phase_5 = eval(phase_5)
-    phase_6 = eval(phase_6)
-    
+    phase0 = eval(phase0)
+    phase1 = eval(phase1)
+    phase2 = eval(phase2)
+    phase3 = eval(phase3)
+    phase4 = eval(phase4)
+    phase5 = eval(phase5)
+    phase6 = eval(phase6)
+
+    # Install locale !
+    if phase0:
+        if env.system.install:
+            system.setup_locale()
+
     # Install PostgreSQL
-    if phase_1:
+    if phase1:
         pg_install_server()
         pg_create_openerp_user()
 
     # Install System packages required for OpenERP
-    if phase_2:
+    if phase2:
         sys_install_openerp_prerequisites()
 
     # Create OpenERP admin user
-    if phase_3:
+    if phase3:
         sys_create_openerp_user()
 
     # Create directories (/opt/openerp/customer, /var/log)
-    if phase_4:
+    if phase4:
         sys_create_customer_directory()
         sys_create_log_directory()
         sys_create_backup_directory()
         sys_create_muppy_transactions_directory()
         sys_create_buffer_directory()
 
-
-    if phase_5:
+    if phase5:
         openerp_clone_appserver()
         openerp_bootstrap_appserver()
         
     # Setup init scripts
-    if phase_6:
+    if phase6:
         openerp_create_services()
 
     reboot()
