@@ -61,3 +61,19 @@ adm_user is a system user created by muppy that will own and run openerp.
 
 This user may be or not in the sudo group depending on the value of the _adm_user_is_sudoer_ parameter.
 
+## How to work with https only repositories
+The best is to create a dedicated user for each repository with readonly access.
+
+In the muppy config file, include the user and password in the appserver_url like these examples:
+
+* git https://username:password@bitbucket.org/owner/repository.git
+* git https://username:password@github.com/owner/repository.git
+* git https://username:password@yourgitlab.server.ext/owner/repository.git
+
+Remember that:
+
+* the username and password will be stored in clear in the remote url (See git remote -v).
+So you must use a dedicated username and password with readonly access.
+* You should use the same strategy to clone your addons using buildout cfg URLs. 
+
+
