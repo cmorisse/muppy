@@ -284,7 +284,11 @@ class BitbucketRepository(Repository):
             return "hg clone -y %s %s" % (self.clone_url, self.destination_directory,)
 
         # elif self.dvcs == 'git':
-        return "git clone %s %s" % (self.clone_url, self.destination_directory,)
+        if self.protocol == 'https':
+            # we must trick the url to inject user and password
+            return "git clone %s://%s:%s@%s/%s/%s.git" % (self.protocol, self.user, self.password, self.hostname,self.owner, self.name,)
+        else:
+            return "git clone %s %s" % (self.clone_url, self.destination_directory,)
 
     @property
     def checkout_command_line(self):
