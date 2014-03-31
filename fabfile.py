@@ -541,9 +541,11 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
 
     user_set_password(env.adm_user, env.adm_password)
 
-    # We grant right manage openerp services (classic and gunicorn) to adm_user group. We use.
+    # In allcases, we grant right manage openerp services (classic and gunicorn) to adm_user group. We use:
     #echo "%openerp ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp" > /etc/sudoers.d/muppy
     #chmod 0440 /etc/sudoers.d/muppy
+    # We always overwrite the file
+    # TODO: think about imporvieng this
     sudo("echo \"%%%s ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp\" > /etc/sudoers.d/muppy" % env.adm_user)
     sudo("chmod 0440 /etc/sudoers.d/muppy")
 
