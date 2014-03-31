@@ -48,7 +48,7 @@ env.root_password = config_parser.get('env', 'root_password')
 
 env.adm_user = (config_parser.has_option('env', 'adm_user') and config_parser.get('env', 'adm_user')) or env.root_user
 env.adm_password = (config_parser.has_option('env', 'adm_password') and config_parser.get('env', 'adm_password')) or env.root_password
-env.adm_user_is_sudoer = (config_parser.has_option('env', 'adm_user_is_sudoer') and config_parser.get('env', 'adm_user_is_sudoer')) or False
+env.adm_user_is_sudoer = (config_parser.has_option('env', 'adm_user_is_sudoer') and config_parser.getboolean('env', 'adm_user_is_sudoer')) or False
 
 
 env.db_user = (config_parser.has_option('env', 'db_user') and config_parser.get('env', 'db_user')) or env.adm_user
@@ -536,10 +536,16 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
         if not 'sudo' in user_get_groups(env.adm_user):
             sudo('usermod -a -G sudo %s' % env.adm_user)
     else:
-        if 'sudo' in user_get_groups('env.adm_user'):
+        if 'sudo' in user_get_groups(env.adm_user):
             sudo('deluser %s sudo' % env.adm_user)
 
     user_set_password(env.adm_user, env.adm_password)
+
+    # We grant right manage openerp services (classic and gunicorn) to adm_user group. We use.
+    #echo "%openerp ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp" > /etc/sudoers.d/muppy
+    #chmod 0440 /etc/sudoers.d/muppy
+    sudo("echo \"%%%s ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp\" > /etc/sudoers.d/muppy" % env.adm_user)
+    sudo("chmod 0440 /etc/sudoers.d/muppy")
 
     # Generate a ssh key for adm_user if it does not exists
     env.user = env.adm_user
