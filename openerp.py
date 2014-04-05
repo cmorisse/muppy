@@ -14,14 +14,7 @@ OpenERP Application Server related tasks
 """
 
 
-@task
-def stop_service():
-    """Stop running OpenERP service wether it is running with gunicorn or classic OpenERP."""
-    # This script has been designed to be really robust and accomodate buggy init scripts
-
-    WAIT_TIME = 5  # Delay to wait after a kill or stop
-
-    # We switch to root_user, but we preserve active user
+def get_running_service():
     backup = env.user, env.password
     env.user, env.password = env.root_user, env.root_password
 
@@ -33,20 +26,40 @@ def stop_service():
 
     if raw_server:
         if raw_server.startswith('gunicorn'):
-            running_service = 'gunicorn'
+            running_service = 'gunicorn-openerp'
         else:
-            running_service = 'openerp'
+            running_service = 'openerp-server'
     else:
-        print colors.magenta("WARNING: Did not find any running openerp service to stop")
+        running_service = None
+
+    env.user, env.password = backup
+    return running_service
+
+
+@task
+def stop_service():
+    """Stop running OpenERP service wether it is running with gunicorn or classic OpenERP."""
+    # This script has been designed to be really robust and accomodate buggy init scripts
+
+    WAIT_TIME = 5  # Delay to wait after a kill or stop
+
+    # We switch to root_user, but we preserve active user
+    backup = env.user, env.password
+    env.user, env.password = env.root_user, env.root_password
+
+    running_service = get_running_service()
+
+    if not running_service:
+        print colors.magenta("WARNING: Did not find any running openerp service to stop !")
         return True
     print colors.blue("INFO: Running server is '%s'" % running_service)
 
     # we know which server is running, we can stop it
     print colors.blue("INFO: trying to use init.d script stop command.")
-    if running_service == 'gunicorn':
-        sudo('/etc/init.d/gunicorn-openerp stop', pty=False)
+    if running_service == 'gunicorn-openerp':
+        sudo('/etc/init.d/gunicorn-openerp stop', pty=False, quiet=True)
     else:
-        sudo('/etc/init.d/openerp-server stop', pty=False)
+        sudo('/etc/init.d/openerp-server stop', pty=False, quiet=True)
 
     # we wait 3 seconds and check that are no openerp_process
     # if any we kill them
@@ -71,17 +84,17 @@ def stop_service():
             last_result = result
             result = filter(lambda e: not (e is None or e.startswith(' ')), raw_result.split('\r\n'))[0]
         else:
-            if process_killed == 1:
-                print colors.green("INFO: OpenERP service '%s' stopped." % running_service)
+            if process_killed == 0:
+                print colors.green("OpenERP service '%s' stopped." % (running_service,))
             else:
-                print colors.magenta("INFO: OpenERP service '%s' killed." % (running_service,))
+                print colors.green("OpenERP service '%s' killed." % running_service)
             return_value = True
             break
 
         # stop failed, so we try to kill the same process up to 3 times
         if iteration_num < 4:
             # we kill identified process
-            print colors.magenta("INFO: killing process %s" % result )
+            print colors.magenta("INFO: killing process %s" % result)
             sudo('kill -9 %s' % result, quiet=True)
             time.sleep(WAIT_TIME)
         else:
@@ -99,23 +112,30 @@ def stop_service():
     return return_value
 
 
-
-
 @task
 def start_service():
-    """Start OpenERP service"""
+    """Start the OpenERP service setup to boot"""
     # We switch to root_user, but we preserve active usert
-    backup_user = env.user
-    backup_password = env.password
+    backup = (env.user, env.password)
 
-    env.user = env.root_user
-    env.password = env.root_password
-    sudo('/etc/init.d/openerp-server start', pty=False)
+    env.user, env.password = env.root_user, env.root_password
 
-    env.user = backup_user
-    env.password = backup_password
-    print green("openerp-server started")
+    running_service = get_running_service()
+    if not running_service:
+        command_return = sudo("ls /etc/rc2.d/ | grep openerp-server", quiet=True, warn_only=True)
+        if command_return.succeeded:
+            print colors.blue("INFO: Currently active init.d script is 'openerp-server'")
+            sudo('/etc/init.d/openerp-server start', pty=False, quiet=True)
+            print green("OpenERP service 'openerp-server' started.")
+        else:
+            print colors.blue("INFO: Currently active init.d script is 'gunicorn-openerp'")
+            sudo('/etc/init.d/gunicorn-openerp start', pty=False, quiet=True)
+            print green("OpenERP service 'gunicorn-openerp' started.")
+    else:
+        print colors.magenta("WARNING: OpenERP '%s' service not started as it's already running." % running_service)
 
+    env.user, env.password = backup
+    return
 
 
 @task
@@ -125,7 +145,8 @@ def buildout():
     env.password = env.adm_password
     with cd(env.openerp.repository.path):
         run('bin/buildout')
-    print magenta("Server '%s' buildout finished. Check log above for errors !" % env.openerp.repository.path)
+    print colors.magento("WARNING: Check log above for errors !" % env.openerp.repository.path)
+    print colors.green("Server '%s' buildout finished." % env.openerp.repository.path)
 
 @task
 def show_current_revision():
@@ -194,7 +215,7 @@ def check_refspec(refspec, embedded=False):
         sys.exit(128)
 
     if env.openerp.repository.dvcs != 'git':
-        print yellow("WARNING: check refspec not implemented with mercurial")
+        print colors.magenta("WARNING: check refspec not implemented with mercurial")
         return True
     with cd(env.openerp.repository.path):
         run('git fetch')
@@ -376,10 +397,10 @@ def deploy_rollback(jobs=8):
     for db_name, db_status in update_database_statuses.items():
         backup_file = databases_backups_dict[db_name]
         if db_status == 'error':
-            print magenta("WARNING: Database '%s' update failed during deploy, restoring it using backup file '%s'" % (db_name, backup_file,))
+            print colors.magenta("WARNING: Database '%s' update failed during deploy, restoring it using backup file '%s'" % (db_name, backup_file,))
             postgresql.restore(backup_file, jobs)
         elif db_status == 'ok':
-            print magenta("WARNING: Database '%s' update succeeded during deploy, restoring it using backup file '%s'" % (db_name, backup_file,))
+            print colors.magenta("WARNING: Database '%s' update succeeded during deploy, restoring it using backup file '%s'" % (db_name, backup_file,))
             postgresql.restore(backup_file, jobs)
 
     start_service()
