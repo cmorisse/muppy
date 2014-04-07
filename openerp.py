@@ -145,7 +145,7 @@ def buildout():
     env.password = env.adm_password
     with cd(env.openerp.repository.path):
         run('bin/buildout')
-    print colors.magenta("WARNING: Check log above for errors !" % env.openerp.repository.path)
+    print colors.magenta("WARNING: Check log above for errors !")
     print colors.green("Server '%s' buildout finished." % env.openerp.repository.path)
 
 @task
