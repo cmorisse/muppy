@@ -1,74 +1,176 @@
-#!/bin/sh
-
+#! /bin/sh
 ### BEGIN INIT INFO
-# Provides:             openerp-server
-# Required-Start:       $remote_fs $syslog
-# Required-Stop:        $remote_fs $syslog
-# Should-Start:         $network
-# Should-Stop:          $network
-# Default-Start:        2 3 4 5
-# Default-Stop:         0 1 6
-# Short-Description:    Enterprise Resource Management software
-# Description:          Open ERP is a complete ERP and CRM software.
+# Provides:          skeleton
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: openerp-server init script
+# Description:       This is an init.d script to launch a Classical OpenERP using
+#                    buildout start_openerp command.
+#                    This script is derived from /etc/init.d/skeleton
 ### END INIT INFO
 
-PATH=/bin:/sbin:/usr/bin
+#
+# Author    : Cyril MORISSE - @cmorisse
+# Version   : 2
+# Date      : 7 april 2014
+#
+
+# Do NOT "set -e"
+
+# PATH should only include /usr/* if it runs after the mountnfs.sh script
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+DESC="OpenERP Service Classical launcher"
+NAME=start_openerp
 DAEMON={{muppy_appserver_path}}bin/start_openerp
-NAME=openerp-server
-DESC="Classical OpenERP launcher"
-
-#
-# Specify the user name who will own the process.
-#USER=openerp
-USER={{muppy_adm_user}}
-
-# TODO: add pid number
-PIDFILE=/var/run/$NAME.pid
-
-#
 # Additional options that are passed to the Daemon.
-#
 LOGFILE=/var/log/openerp/openerp-server.log
-DAEMON_OPTS=" --logfile=$LOGFILE --log-handler=:ERROR"
+DAEMON_ARGS=" --logfile=$LOGFILE --log-handler=:ERROR"
+# Specify the user name who will own the process.
+DAEMON_USER={{muppy_adm_user}}
 
-[ -x $DAEMON ] || exit 0
-[ -f $CONFIGFILE ] || exit 0
+PIDFILE=/var/run/$NAME.pid
+SCRIPTNAME=/etc/init.d/$NAME
 
-# TODO: Manage multi instance based on different network port
-checkpid() {
-    [ -f $PIDFILE ] || return 1
-    pid=`cat $PIDFILE`
-    [ -d /proc/$pid ] && return 0
-    return 1
+# Exit if the package is not installed
+[ -x "$DAEMON" ] || exit 0
+
+# Read configuration variable file if it is present
+[ -r /etc/default/$NAME ] && . /etc/default/$NAME
+
+# Load the VERBOSE setting and other rcS variables
+. /lib/init/vars.sh
+
+# Define LSB log_* functions.
+# Depend on lsb-base (>= 3.2-14) to ensure that this file is present
+# and status_of_proc is working.
+. /lib/lsb/init-functions
+
+#
+# Function that starts the daemon/service
+#
+do_start()
+{
+	# Return
+	#   0 if daemon has been started
+	#   1 if daemon was already running
+	#   2 if daemon could not be startedi
+
+	# we check wether our daemon is running and return if it is
+	is_daemon_running=$(ps -e -o %p,%c | grep $NAME | cut -d',' -f2)
+	[ "${is_daemon_running}" = "${NAME}" ] && return 1
+
+	start-stop-daemon --start --quiet --background \
+		--make-pidfile --pidfile $PIDFILE --chuid $DAEMON_USER \
+		--name $NAME --exec $DAEMON -- $DAEMON_ARGS || return 2
+
+	# Add code here, if necessary, that waits for the process to be ready
+	# to handle requests from services started subsequently which depend
+	# on this one.  As a last resort, sleep for some time.
 }
 
-case "${1}" in
-        start)
-                echo -n "Starting \"${DESC}\": ... "
-                start-stop-daemon --start --quiet --pidfile ${PIDFILE} --chuid ${USER} --background --make-pidfile  --exec ${DAEMON} -- ${DAEMON_OPTS}
-                echo "${NAME} started."
-                ;;
+#
+# Function that stops the daemon/service
+#
+do_stop()
+{
+	# Return
+	#   0 if daemon has been stopped
+	#   1 if daemon was already stopped
+	#   2 if daemon could not be stopped
+	#   other if a failure occurred
+	start-stop-daemon --stop --quiet --retry=TERM/30/KILL/5 \
+        --pidfile $PIDFILE --name $NAME
+	RETVAL="$?"
+	# Add additional processing here
+	[ "$RETVAL" = 2 ] && return 2
+	# Wait for children to finish too if this is a daemon that forks
+	# and if the daemon is only ever run from this initscript.
+	# If the above conditions are not satisfied then add some other code
+	# that waits for the process to drop all resources that could be
+	# needed by services started subsequently.  A last resort is to
+	# sleep for some time.
+	start-stop-daemon --stop --quiet --oknodo --retry=0/30/KILL/5 \
+	    --exec $DAEMON
+	RETVAL="$?"
+	# Add additional processing here
+	[ "$RETVAL" = 2 ] && return 2
 
-        stop)
-                echo -n "Stopping \"${DESC}\": ... "
-                start-stop-daemon --stop --quiet --pidfile ${PIDFILE} --oknodo
-                echo "${NAME} stopped."
-                ;;
+	# Many daemons don't delete their pidfiles when they exit.
+	rm -f $PIDFILE
+	return "$RETVAL"
+}
 
-        restart|force-reload)
-                echo -n "Restarting \"${DESC}\": ... "
-                start-stop-daemon --stop --quiet --pidfile ${PIDFILE} --oknodo
-                sleep 1
-                start-stop-daemon --start --quiet --pidfile ${PIDFILE} --chuid ${USER} --background --make-pidfile  --exec ${DAEMON} -- ${DAEMON_OPTS}
-                echo "${NAME} restarted."
-                ;;
+#
+# Function that sends a SIGHUP to the daemon/service
+#
+#do_reload() {
+	#
+	# If the daemon can reload its configuration without
+	# restarting (for example, when it is sent a SIGHUP),
+	# then implement that here.
+	#
+#	start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE --name $NAME
+#	return 0
+#}
 
-        *)
-                N=/etc/init.d/${NAME}
-                echo "Usage: ${N} {start|stop|restart|force-reload}" >&2
-                exit 1
-                ;;
+case "$1" in
+  start)
+	[ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$NAME"
+	do_start
+	case "$?" in
+		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
+		2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+	esac
+	;;
+  stop)
+	[ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC" "$NAME"
+	do_stop
+	case "$?" in
+		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
+		2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
+	esac
+	;;
+  status)
+	status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
+	;;
+  #reload|force-reload)
+	#
+	# If do_reload() is not implemented then leave this commented out
+	# and leave 'force-reload' as an alias for 'restart'.
+	#
+	#log_daemon_msg "Reloading $DESC" "$NAME"
+	#do_reload
+	#log_end_msg $?
+	#;;
+  restart|force-reload)
+	#
+	# If the "reload" option is implemented then remove the
+	# 'force-reload' alias
+	#
+	log_daemon_msg "Restarting $DESC" "$NAME"
+	do_stop
+	case "$?" in
+	  0|1)
+		do_start
+		case "$?" in
+			0) log_end_msg 0 ;;
+			1) log_end_msg 1 ;; # Old process is still running
+			*) log_end_msg 1 ;; # Failed to start
+		esac
+		;;
+	  *)
+		# Failed to stop
+		log_end_msg 1
+		;;
+	esac
+	;;
+  *)
+	#echo "Usage: $SCRIPTNAME {start|stop|restart|reload|force-reload}" >&2
+	echo "Usage: $SCRIPTNAME {start|stop|status|restart|force-reload}" >&2
+	exit 3
+	;;
 esac
 
-exit 0
-
+:
