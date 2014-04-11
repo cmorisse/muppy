@@ -13,32 +13,28 @@
 ### END INIT INFO
 
 PATH=/bin:/sbin:/usr/bin
-DAEMON={{muppy_appserver_path}}/bin/gunicorn_openerp
-NAME=gunicorn_openerp
-DESC="Gunicorn OpenERP launcher"
+DAEMON={{muppy_appserver_path}}bin/start_openerp
+NAME=openerp-server
+DESC="Classical OpenERP launcher"
 
-# process owner
+#
+# Specify the user name who will own the process.
+#USER=openerp
 USER={{muppy_adm_user}}
 
-# pidfile
-PIDFILE=/var/run/openerp/$NAME.pid
-
-# We create a directory owned by adm_use to store pid files
-if [ ! -d /var/run/openerp ]; then
-        mkdir -p /var/run/openerp
-        chown {{muppy_adm_user}} /var/run/openerp
-fi
+# TODO: add pid number
+PIDFILE=/var/run/$NAME.pid
 
 #
 # Additional options that are passed to the Daemon.
 #
-#LOGFILE=/var/log/openerp/openerp-server.log
-#DAEMON_OPTS=" --logfile=$LOGFILE --log-handler=:INFO" # !!!! As of may 2013 gunicorn_openerp ignores parameters
-DAEMON_OPTS= 
+LOGFILE=/var/log/openerp/openerp-server.log
+DAEMON_OPTS=" --logfile=$LOGFILE --log-handler=:ERROR"
 
 [ -x $DAEMON ] || exit 0
 [ -f $CONFIGFILE ] || exit 0
 
+# TODO: Manage multi instance based on different network port
 checkpid() {
     [ -f $PIDFILE ] || return 1
     pid=`cat $PIDFILE`
@@ -49,7 +45,7 @@ checkpid() {
 case "${1}" in
         start)
                 echo -n "Starting \"${DESC}\": ... "
-                start-stop-daemon --start --quiet --pidfile ${PIDFILE} --chuid ${USER} --background --chdir /var/run/openerp --exec ${DAEMON} -- ${DAEMON_OPTS}
+                start-stop-daemon --start --quiet --pidfile ${PIDFILE} --chuid ${USER} --background --make-pidfile  --exec ${DAEMON} -- ${DAEMON_OPTS}
                 echo "${NAME} started."
                 ;;
 
@@ -63,7 +59,7 @@ case "${1}" in
                 echo -n "Restarting \"${DESC}\": ... "
                 start-stop-daemon --stop --quiet --pidfile ${PIDFILE} --oknodo
                 sleep 1
-                start-stop-daemon --start --quiet --pidfile ${PIDFILE} --chuid ${USER} --background --chdir /var/run/openerp --exec ${DAEMON} -- ${DAEMON_OPTS}
+                start-stop-daemon --start --quiet --pidfile ${PIDFILE} --chuid ${USER} --background --make-pidfile  --exec ${DAEMON} -- ${DAEMON_OPTS}
                 echo "${NAME} restarted."
                 ;;
 
