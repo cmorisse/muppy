@@ -1,42 +1,30 @@
 #! /bin/sh
 ### BEGIN INIT INFO
-# Provides:          OpenERP Server - Classic
+# Provides:          skeleton
 # Required-Start:    $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: openerp-server init script
-# Description:       This script launch a Classical OpenERP using
-#                    buildout bin/start_openerp command.
-#                    This script is derived from /etc/init.d/skeleton
+# Short-Description: Example initscript
+# Description:       This file should be used to construct scripts to be
+#                    placed in /etc/init.d.
 ### END INIT INFO
 
+# Author: Foo Bar <foobar@baz.org>
 #
-# Author    : Cyril MORISSE - @cmorisse
-# Version   : 2
-# Date      : 7 april 2014
-#
+# Please remove the "Author" lines above and replace them
+# with your own name if you copy and modify this script.
 
 # Do NOT "set -e"
 
 # PATH should only include /usr/* if it runs after the mountnfs.sh script
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
-DESC="OpenERP Service Classical launcher"
-NAME=start_openerp
+DESC="Description of the service"
+NAME=daemonexecutablename
+DAEMON=/usr/sbin/$NAME
+DAEMON_ARGS="--options args"
+PIDFILE=/var/run/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
-DAEMON={{muppy_appserver_path}}bin/start_openerp
-
-# Additional options that are passed to the Daemon.
-LOGFILE=/var/log/openerp/openerp-server.log
-DAEMON_ARGS=" --logfile=$LOGFILE --log-handler=:ERROR"
-
-# Process owner
-DAEMON_USER={{muppy_adm_user}}
-
-# We store pidfiles in  directory owned by adm_user
-PID_DIRECTORY=/var/run/openerp
-PIDFILE=$PID_DIRECTORY/$NAME.pid
-
 
 # Exit if the package is not installed
 [ -x "$DAEMON" ] || exit 0
@@ -52,12 +40,6 @@ PIDFILE=$PID_DIRECTORY/$NAME.pid
 # and status_of_proc is working.
 . /lib/lsb/init-functions
 
-# Create pid directory
-if [ ! -d $PID_DIRECTORY ]; then
-	mkdir -p $PID_DIRECTORY
-	chown $DAEMON_USER $PID_DIRECTORY
-fi
-
 #
 # Function that starts the daemon/service
 #
@@ -66,16 +48,12 @@ do_start()
 	# Return
 	#   0 if daemon has been started
 	#   1 if daemon was already running
-	#   2 if daemon could not be startedi
-
-	# we check wether our daemon is running and return if it is
-	is_daemon_running=$(ps -e -o %p,%c | grep $NAME | cut -d',' -f2)
-	[ "${is_daemon_running}" = "${NAME}" ] && return 1
-
-	start-stop-daemon --start --quiet --background \
-		--make-pidfile --pidfile $PIDFILE --chuid $DAEMON_USER \
-		--name $NAME --exec $DAEMON -- $DAEMON_ARGS || return 2
-
+	#   2 if daemon could not be started
+	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
+		|| return 1
+	start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON -- \
+		$DAEMON_ARGS \
+		|| return 2
 	# Add code here, if necessary, that waits for the process to be ready
 	# to handle requests from services started subsequently which depend
 	# on this one.  As a last resort, sleep for some time.
@@ -91,10 +69,8 @@ do_stop()
 	#   1 if daemon was already stopped
 	#   2 if daemon could not be stopped
 	#   other if a failure occurred
-	start-stop-daemon --stop --quiet --retry=TERM/30/KILL/5 \
-        --pidfile $PIDFILE --name $NAME
+	start-stop-daemon --stop --quiet --retry=TERM/30/KILL/5 --pidfile $PIDFILE --name $NAME
 	RETVAL="$?"
-	# Add additional processing here
 	[ "$RETVAL" = 2 ] && return 2
 	# Wait for children to finish too if this is a daemon that forks
 	# and if the daemon is only ever run from this initscript.
@@ -102,12 +78,8 @@ do_stop()
 	# that waits for the process to drop all resources that could be
 	# needed by services started subsequently.  A last resort is to
 	# sleep for some time.
-	start-stop-daemon --stop --quiet --oknodo --retry=0/30/KILL/5 \
-	    --exec $DAEMON
-	RETVAL="$?"
-	# Add additional processing here
-	[ "$RETVAL" = 2 ] && return 2
-
+	start-stop-daemon --stop --quiet --oknodo --retry=0/30/KILL/5 --exec $DAEMON
+	[ "$?" = 2 ] && return 2
 	# Many daemons don't delete their pidfiles when they exit.
 	rm -f $PIDFILE
 	return "$RETVAL"
@@ -116,15 +88,15 @@ do_stop()
 #
 # Function that sends a SIGHUP to the daemon/service
 #
-#do_reload() {
+do_reload() {
 	#
 	# If the daemon can reload its configuration without
 	# restarting (for example, when it is sent a SIGHUP),
 	# then implement that here.
 	#
-#	start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE --name $NAME
-#	return 0
-#}
+	start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE --name $NAME
+	return 0
+}
 
 case "$1" in
   start)
