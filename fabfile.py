@@ -3,6 +3,7 @@ import os
 from fabric.api import *
 from fabric.contrib.files import upload_template, exists, sed
 from fabric.colors import *
+from fabric import colors
 import ConfigParser
 import requests
 import datetime
@@ -16,10 +17,10 @@ import vagrant
 import postgresql
 import openerp
 import security
+import system  # And no system is not a python module ; it's a muppy one
+import lxc
 
-import pudb
-
-__version__ = '0.2.7'
+__version__ = '0.2.9'
 
 # TODO: Installation JasperReport Server
 
@@ -88,22 +89,24 @@ env.postgresql = postgresql.parse_config(config_parser)
 env.security = security.parse_config(config_parser)
 
 #
-# Security
-import system
+# system
 env.system = system.parse_config(config_parser)
 
+#
+# lxc
+env.lxc = lxc.parse_config(config_parser)
 
 
 # TODO: eval root, adm, pg, postgres, user and password from os.environ
 
 class _AppserverRepository:
-    pass
+    enabled = False
 
 
 class Repository(object):
     def __init__(self, user, password, url, base_path):
         self.dvcs, self.clone_url, self.destination_directory, self.version, self.name, \
-        self.owner, self.protocol = Repository.parse_appserver_url(url)
+            self.owner, self.protocol = Repository.parse_appserver_url(url)
 
         self.user = user
         self.password = password
@@ -322,10 +325,8 @@ if config_parser.has_section('appserver_repository'):
                                                               _AppserverRepository.password,
                                                               _AppserverRepository.appserver_url,
                                                               env.customer_path)
+    _AppserverRepository.enabled = True
     env.openerp = _AppserverRepository
-else:
-    print red("Error: [appserver_repository] section missing in config file")
-    exit(-1)
 
 
 @task
@@ -424,72 +425,19 @@ def sys_install_openerp_prerequisites():
     sudo("easy_install virtualenv==1.11.4")
 
     sudo("apt-get install -y python-dev libz-dev")
-    sudo("apt-get install -y bzr mercurial git")
     sudo("apt-get install -y libxml2-dev libxslt1-dev")
     sudo("apt-get install -y libpq-dev")
     sudo("apt-get install -y libldap2-dev libsasl2-dev")
     sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev liblcms1-dev libwebp-dev libtiff-dev")
     sudo("apt-get install -y libyaml-dev")
-
-    sudo("apt-get install -y curl htop vim")
+    sudo("apt-get install -y bzr mercurial git")
+    sudo("apt-get install -y curl htop vim tmux")
 
     print green("OpenERP prerequisites installed.")
 
-@task
-def user_get_groups(user_name):
-    env.user = env.root_user
-    env.password = env.root_password
-    groups = sudo('groups %s' % user_name, warn_only=True)
-    if groups.failed:
-        return []
-    return groups.split(':')[1].lstrip().split(' ')
-
-
-@task
-def user_set_password(user_name, user_password):
-    env.user = env.root_user
-    env.password = env.root_password
-    # set password for adm_user
-    sudo("echo '%s:%s' > pw.tmp" % (user_name, user_password,), quiet=True)
-    sudo("sudo chpasswd < pw.tmp", quiet=True)
-    sudo("rm pw.tmp", quiet=True)
-    print green("User \"%s\" password set." % user_name)
-
-
-@task
-def user_search(user_name):
-    """
-    Search if a user exists
-    :type user_name: str looked up username
-    :type root_user: str
-    :type root_password: str
-    :return: id of user
-    :rtype: str
-    """
-    env_backup = (env.user, env.password,)
-    env.user, env.password = env.root_user, env.root_password
-    lookup = sudo('id -u %s 2>/dev/null' % user_name, warn_only=True, quiet=True)
-    (env.user, env.password,) = env_backup 
-    return lookup
-
-@task
-def user_exists(user_name):
-    env.user = env.root_user
-    env.password = env.root_password
-    return user_search(user_name) != ''
-
-@task
-def get_hostname():
-    env_backup = (env.user, env.password,)
-    env.user, env.password = env.root_user, env.root_password
-
-    hostname = run("hostname", warn_only=True, quiet=True)
-
-    (env.user, env.password,) = env_backup 
-    return hostname
 
 def get_sshkey_name():
-    return 'muppy:%s@%s' % (env.adm_user, get_hostname(),)
+    return 'muppy:%s@%s' % (env.adm_user, system.get_hostname(),)
 
 def update_ssh_key_on_private_repositories(sshkey_string):
     """
@@ -528,18 +476,18 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
     env.password = root_password
 
     # create adm_user if it does not exists
-    if not user_search(env.adm_user):
+    if not system.user_search(env.adm_user):
         sudo("useradd -m -s /bin/bash --system %s" % (env.adm_user,))
 
     # manage adm_user sudo membership
     if env.adm_user_is_sudoer:
-        if not 'sudo' in user_get_groups(env.adm_user):
+        if not 'sudo' in system.user_get_groups(env.adm_user):
             sudo('usermod -a -G sudo %s' % env.adm_user)
     else:
-        if 'sudo' in user_get_groups(env.adm_user):
+        if 'sudo' in system.user_get_groups(env.adm_user):
             sudo('deluser %s sudo' % env.adm_user)
 
-    user_set_password(env.adm_user, env.adm_password)
+    system.user_set_password(env.adm_user, env.adm_password)
 
     # In allcases, we grant right manage openerp services (classic and gunicorn) to adm_user group. We use:
     #echo "%openerp ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp" > /etc/sudoers.d/muppy
@@ -556,7 +504,7 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
         run("ssh-keygen -t rsa -N \"\" -f ~/.ssh/id_rsa")
 
     # download ssh key
-    host_name = get_hostname()
+    host_name = system.get_hostname()
     ssh_key_file_name = 'ssh_keys_temp/%s__%s__id_rsa.pub' % (host_name, env.adm_user,)
     get('/home/%s/.ssh/id_rsa.pub' % (env.adm_user,), ssh_key_file_name)
     ssh_key_file = open(ssh_key_file_name)
@@ -872,18 +820,24 @@ def openerp_reinstall_appserver():
 
 
 @task
-def ssh(user='adm_user'):
-    """:[[root]] Launch an SSH session into host using either adm_user (default) or root_user if [[root]] parameter is supplied"""
+def ssh(user='adm'):
+    """:adm | root | leech | lxc -  Launch an SSH session into host with corresponding user. adm_user (default) or root_user ..."""
     env.user = env.adm_user
     env.password = env.adm_password
 
-    if user != 'adm_user':
-        ssh_user = env.root_user
-        ssh_password = env.root_password
-    else:
+    if user == 'adm':
         ssh_user = env.adm_user
         ssh_password = env.adm_password
-    
+    elif user == 'root':
+        ssh_user = env.root_user
+        ssh_password = env.root_password
+    elif user == 'lxc':
+        ssh_user = env.lxc.user_name
+        ssh_password = env.lxc.user_password
+    else:
+        print colors.red("ERROR: Unknown user %s !" % user)
+        sys.exit(1)
+
     print "Password= "+ blue("%s" % ssh_password)
     
     ssh = subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])

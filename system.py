@@ -122,3 +122,134 @@ def upgrade():
     sudo("apt-get update --fix-missing")
     sudo("apt-get upgrade -y")
     print green("System updated and upgraded")
+
+
+@task
+def user_get_groups(username, quiet=False):
+    env_backup = (env.user, env.password,)
+
+    env.user = env.root_user
+    env.password = env.root_password
+    groups = sudo('groups %s' % username, warn_only=True, quiet=quiet)
+
+    (env.user, env.password,) = env_backup
+    if groups.failed:
+        return []
+    return groups.split(':')[1].lstrip().split(' ')
+
+
+@task
+def user_search(user_name):
+    """
+    Search if a user exists
+    :type user_name: str looked up username
+    :type root_user: str
+    :type root_password: str
+    :return: id of user
+    :rtype: str
+    """
+    env_backup = (env.user, env.password,)
+    env.user, env.password = env.root_user, env.root_password
+    lookup = sudo('id -u %s 2>/dev/null' % user_name, warn_only=True, quiet=True)
+    (env.user, env.password,) = env_backup
+    return lookup
+
+
+@task
+def user_set_password(username, password):
+    env_backup = (env.user, env.password,)
+    env.user = env.root_user
+    env.password = env.root_password
+    sudo("echo '%s:%s' > pw.tmp" % (username, password,), quiet=True)
+    sudo("sudo chpasswd < pw.tmp", quiet=True)
+    sudo("rm pw.tmp", quiet=True)
+    (env.user, env.password,) = env_backup
+
+
+@task
+def user_exists(username):
+    return user_search(username) != ''
+
+@task
+def get_hostname():
+    env_backup = (env.user, env.password,)
+
+    env.user, env.password = env.root_user, env.root_password
+    hostname = run("hostname", warn_only=True, quiet=True)
+
+    (env.user, env.password,) = env_backup
+    return hostname
+
+@task
+def user_create(username, password, groups="", system_user=False, quiet=False):
+    """Create a user on remote system set hi to belongs to groups. If user exists reset his password and add him into the groups."""
+    env_backup = (env.user, env.password)
+
+    # creat euser only it it does not exist
+    if not user_search(username):
+        if system_user:
+            sudo("useradd -m -s /bin/bash --system %s" % (username,), quiet=quiet)
+        else:
+            sudo("useradd -m -s /bin/bash %s" % (username,), quiet=quiet)
+
+    # manage user group membership
+    # check that user is in all requested groups
+    group_list = filter(None, groups.split(';'))
+    group_list.append(username)
+    for group_name in group_list:
+        actual_group_list = user_get_groups(username, quiet=quiet)
+        if group_name not in actual_group_list:
+            sudo('usermod -a -G %s %s' % (group_name, username,), quiet=quiet)
+
+    user_set_password(username, password)
+
+    # Generate a ssh key for username if it does not exists
+    env.user = username
+    env.password = password
+    if not exists('~/.ssh/id_rsa'):
+        run("ssh-keygen -t rsa -N \"\" -f ~/.ssh/id_rsa", quiet=quiet)
+
+    # download ssh key
+    host_name = get_hostname()
+    ssh_key_file_name = 'ssh_keys_temp/%s__%s__id_rsa.pub' % (host_name, username,)
+    if os.path.exists(ssh_key_file_name):
+        os.remove(ssh_key_file_name)
+    get('/home/%s/.ssh/id_rsa.pub' % (username,), ssh_key_file_name)
+    ssh_key_file = open(ssh_key_file_name)
+    ssh_key_string = ssh_key_file.read()
+
+    (env.user, env.password) = env_backup
+    return
+
+
+def user_get_sub_ids(username, quiet=False):
+    """Retrieive user sub ids and range"""
+    env_backup = (env.user, env.password)
+
+    uid_range_start = sudo("cat /etc/subuid | grep ^%s: | cut -d':' -f2" % username, quiet=quiet)
+    uid_range_count = sudo("cat /etc/subuid | grep ^%s: | cut -d':' -f3" % username, quiet=quiet)
+    gid_range_start = sudo("cat /etc/subgid | grep ^%s: | cut -d':' -f2" % username, quiet=quiet)
+    gid_range_count = sudo("cat /etc/subgid | grep ^%s: | cut -d':' -f3" % username, quiet=quiet)
+
+    (env.user, env.password) = env_backup
+    return uid_range_start, uid_range_count, gid_range_start, gid_range_count,
+
+
+def user_set_ssh_authorized_keys(username, password, ssh_keys, quiet=False):
+    """
+    Upload a set of ssh keys into a user account.
+    Warning: this does add the keys but replace all keys the one supplied !
+    :param ssh_keys: list of ssh keys (id_rsa.pub content)
+    :type ssh_keys: list
+    :param quiet:
+    :return:
+    """
+    env_backup = (env.user, env.password)
+    env.user, env.password = username, password
+    run("mkdir -p ~./ssh", quiet=quiet)
+    run("echo -n > ~/.ssh/authorized_keys", quiet=quiet)
+    for ssh_key in ssh_keys:
+        run("echo '%s' >> ~/.ssh/authorized_keys" % ssh_key, quiet=quiet)
+    (env.user, env.password) = env_backup
+    return True
+
