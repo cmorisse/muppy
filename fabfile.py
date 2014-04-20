@@ -484,21 +484,27 @@ def sys_create_openerp_user():
 
     # manage adm_user sudo membership
     if env.adm_user_is_sudoer:
+        # we remove our retricted rights file as it may conflict with
+        # next operation where we add adm_user in sudo group
+        if exists('/etc/sudoers.d/muppy', use_sudo=True):
+            sudo("rm /etc/sudoers.d/muppy")
+
+        # add adm_user to sudo group
         if not 'sudo' in system.user_get_groups(env.adm_user):
             sudo('usermod -a -G sudo %s' % env.adm_user)
+
     else:
         if 'sudo' in system.user_get_groups(env.adm_user):
             sudo('deluser %s sudo' % env.adm_user)
 
-    system.user_set_password(env.adm_user, env.adm_password)
+        # We grant right manage openerp services (classic and gunicorn) to adm_user group. We use:
+        #echo "%openerp ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp" > /etc/sudoers.d/muppy
+        #chmod 0440 /etc/sudoers.d/muppy
+        # We always overwrite the file
+        sudo("echo \"%s ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp\" > /etc/sudoers.d/muppy" % env.adm_user)
+        sudo("chmod 0440 /etc/sudoers.d/muppy")
 
-    # In allcases, we grant right manage openerp services (classic and gunicorn) to adm_user group. We use:
-    #echo "%openerp ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp" > /etc/sudoers.d/muppy
-    #chmod 0440 /etc/sudoers.d/muppy
-    # We always overwrite the file
-    # TODO: think about improving this
-    sudo("echo \"%s ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp\" > /etc/sudoers.d/muppy" % env.adm_user)
-    sudo("chmod 0440 /etc/sudoers.d/muppy")
+    system.user_set_password(env.adm_user, env.adm_password)
 
     # Generate a ssh key for adm_user if it does not exists
     env.user = env.adm_user
