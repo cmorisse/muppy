@@ -54,7 +54,11 @@ allow_rules =  tcp 192.168.0.12 any ssh   # This machine has only ssh access
                tcp any          any 8069  # everybody can use OpenERP
 """
 
+
 class SecurityConfig:
+    def __init__(self):
+        pass
+
     enabled = False
     trusted_ips = None
     allow_rules = None
@@ -127,22 +131,24 @@ def get_current_ip():
         return checked_ips[0]
     return None
 
+
 @task
-def setup():
-    """:[[database]] - Open PSQL and connect to the 'postgres' database or [[database]] if supplied"""
+def setup(ignore_public_ip_test='False'):
+    """:[[ignore_public_ip_test=False]] - Setup security. Use :True to bypass the check that user public ip is in the trusted_ips config parameter."""
     env.user, env.password = env.root_user, env.root_password
     if not SecurityConfig.enabled:
         print red("ERROR: Security is disabled in config file")
         sys.exit(1)
 
-    current_ip = get_current_ip()
-    if not current_ip:
-        print red("ERROR: Unable to retreive current public IP. Aborting.")
-        sys.exit(1)
+    if not eval(ignore_public_ip_test):
+        current_ip = get_current_ip()
+        if not current_ip:
+            print red("ERROR: Unable to retreive current public IP. Aborting.")
+            sys.exit(1)
 
-    if current_ip not in SecurityConfig.trusted_ips:
-        print red("ERROR: Current public IP is not in 'trusted_ips' list. Aborting.")
-        sys.exit(1)
+        if current_ip not in SecurityConfig.trusted_ips:
+            print red("ERROR: Current public IP is not in 'trusted_ips' list. Aborting.")
+            sys.exit(1)
 
     sudo("yes | ufw reset")
     for trusted_ip in SecurityConfig.trusted_ips:
@@ -152,11 +158,13 @@ def setup():
         sudo("ufw allow proto %s from %s to %s port %s" % (rule[0], rule[1], rule[2], rule[3],))
     sudo("yes | ufw enable")
 
+
 @task
 def disable():
     """Disable firewall on server"""
     env.user, env.password = env.root_user, env.root_password
     sudo("ufw disable")
+
 
 @task
 def enable():
@@ -164,11 +172,13 @@ def enable():
     env.user, env.password = env.root_user, env.root_password
     sudo("yes | ufw enable")
 
+
 @task
 def status():
     """Show current firewall status."""
     env.user, env.password = env.root_user, env.root_password
     sudo("ufw status numbered verbose")
+
 
 @task
 def generate_config_template():

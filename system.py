@@ -160,8 +160,8 @@ def user_set_password(username, password):
     env_backup = (env.user, env.password,)
     env.user = env.root_user
     env.password = env.root_password
-    sudo("echo '%s:%s' > pw.tmp" % (username, password,), quiet=True)
-    sudo("sudo chpasswd < pw.tmp", quiet=True)
+    sudo("echo '%s:%s' > pw.tmp" % (username, password,), quiet=False)
+    sudo("sudo chpasswd < pw.tmp", quiet=False)
     sudo("rm pw.tmp", quiet=True)
     (env.user, env.password,) = env_backup
 

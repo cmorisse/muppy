@@ -10,6 +10,15 @@ import requests
 from muppy_utils import *
 import system
 
+#TODO: Allow password authentication except for ubuntu
+# Add to /etc/ssh/sshd_config
+#PasswordAuthentication no
+#...
+# Add to end of file
+#Match User admmathon
+#    PasswordAuthentication yes
+
+
 """
 Muppy LXC Integration
 """
@@ -44,6 +53,17 @@ TEMPLATE_CFG_SECTION = """
 #max_network_interfaces_per_user = 80
 
 #
+# public_interface
+#
+# Name of the interface connected to public network.
+#public_interface=eth0
+
+#
+# ssh_pwauth (Not implemented)
+# cloud-init parameter to allow or not ssh password authentication.
+#ssh_pwauth = True
+
+#
 # admin_ssh_keys (Required)
 #
 # List of ssh public keys to authenticate user able to log as 'user_name'
@@ -59,6 +79,9 @@ TEMPLATE_CFG_SECTION = """
 
 
 class LXCConfig:
+    def __init__(self):
+        pass
+
     enabled = False
     # named after one of the Troll in 'Tinker Bell and the Lost Treasure'
     # See http://disneyfairies.wikia.com/wiki/Troll
@@ -67,6 +90,11 @@ class LXCConfig:
     user_password = None
     max_network_interfaces_per_user = 80  # So it's 50 Containers max
     public_interface = 'eth0'
+    
+    ssh_pwauth = True  
+    # To make this an effective parameter, we must add the ability to specify 
+    # an authorized_keys list for adm_user
+    #TODO: add an authorized_keys param for adm_user
 
 
 def parse_config(config_parser):
@@ -138,6 +166,7 @@ def generate_config_template():
 @task
 def setup():
     """Install Muppy LXC Infrastructure."""
+    be_quiet= False
     # Note: This task is idempotent
     env.user, env.password = env.root_user, env.root_password
 
@@ -147,7 +176,7 @@ def setup():
 
     # install lxc
     # we add whois as we need mkpasswd
-    sudo("apt-get install -y lxc cgroup-lite whois", quiet=True)
+    sudo("apt-get install -y lxc cgroup-lite whois", quiet=be_quiet)
     print colors.blue("INFO: lxc, cgroup-lite installed.")
 
     cgroup_config_cmd = """cat > /etc/init/lxc-unpriv-cgroup.conf <<EOF
@@ -162,24 +191,24 @@ script
 end script
 EOF
 """
-    sudo(cgroup_config_cmd, quiet=True)
+    sudo(cgroup_config_cmd, quiet=be_quiet)
     print colors.blue("INFO: Capability groups set for unprivileged containers.")
 
     # containers owner user
-    system.user_create(env.lxc.user_name, env.lxc.user_password, quiet=True)
+    system.user_create(env.lxc.user_name, env.lxc.user_password, quiet=be_quiet)
     print colors.blue("INFO: '%s' user created." % env.lxc.user_name)
 
     # upload ssh keys
-    system.user_set_ssh_authorized_keys(env.lxc.user_name, env.lxc.user_password, env.lxc.admin_ssh_keys, quiet=True)
+    system.user_set_ssh_authorized_keys(env.lxc.user_name, env.lxc.user_password, env.lxc.admin_ssh_keys, quiet=be_quiet)
     print colors.blue("INFO: SSH keys uploaded to user '%s' account." % env.lxc.user_name)
 
     # TODO: disable password auth for lxc.user_name
 
     # retreive sub user ids and group ids
-    sub_ids = system.user_get_sub_ids(LXCConfig.user_name, quiet=True)
+    sub_ids = system.user_get_sub_ids(LXCConfig.user_name, quiet=be_quiet)
     # create user default container configuration file
     env.user, env.password = env.lxc.user_name, env.lxc.user_password
-    run("mkdir -p ~/.config/lxc", quiet=True)
+    run("mkdir -p ~/.config/lxc", quiet=be_quiet)
     lxc_default_conf_cmd = """cat > ~/.config/lxc/default.conf <<EOF
 lxc.network.type = veth
 lxc.network.link = lxcbr0
@@ -189,7 +218,7 @@ lxc.start.auto = 1
 lxc.id_map = u 0 %s %s
 lxc.id_map = g 0 %s %s
 EOF""" % sub_ids
-    run(lxc_default_conf_cmd, quiet=True)
+    run(lxc_default_conf_cmd, quiet=be_quiet)
     print colors.blue("INFO: '%s' default container configuration updated." % env.lxc.user_name)
 
     # grant network bridge access to lxc user
@@ -199,9 +228,9 @@ EOF""" % sub_ids
 
     # we don't use contains as it echoes garbage
     #if files.contains(lxc_usernet_filename, "%-10s veth lxcbr0" % env.lxc.user_name, use_sudo=True):
-    if sudo("grep '%s' %s" % (regex_str, lxc_usernet_filename,), quiet=True).succeeded:
+    if sudo("grep '%s' %s" % (regex_str, lxc_usernet_filename,), quiet=be_quiet).succeeded:
         # we remove all lines
-        sudo("sed -i.bak '/%s/d' %s" % (regex_str, lxc_usernet_filename,), quiet=True)
+        sudo("sed -i.bak '/%s/d' %s" % (regex_str, lxc_usernet_filename,), quiet=be_quiet)
     # same thing for append
     #files.append(lxc_usernet_filename, "%-10s veth lxcbr0 %5s" % (env.lxc.user_name, env.lxc.max_network_interfaces_per_user,), use_sudo=True)
     sudo("echo '%-10s veth lxcbr0 %5s' >> %s" % (env.lxc.user_name, env.lxc.max_network_interfaces_per_user, lxc_usernet_filename,), quiet=True)
@@ -232,7 +261,7 @@ def create(name, release, password, ssh_key=None, locale='fr_FR.UTF-8'):
     #   - ubuntu password is set the {{password}} parameter
     #   - ssh_admin_keys are injected into ubuntu ssh authorized_keys
     #
-    ssh_keys = env.lxc.admin_ssh_key
+    ssh_keys = env.lxc.admin_ssh_keys
     if ssh_key:
         ssh_keys += [ssh_key]
 
@@ -244,7 +273,7 @@ locale: %(locale)s
 # We disable ssh password auth as it's to dangerous
 password: %(password)s
 chpasswd: { expire: False }
-ssh_pwauth: False
+ssh_pwauth: %(ssh_pwauth)s
 # 2) ssh admin keys definition
 # Note: ssh key injection fails on unprivileged container if password is not defined before
 ssh_authorized_keys:
@@ -254,6 +283,7 @@ EOF""" % {
         'password': password,
         'locale': locale,
         'admin_password': env.lxc.user_password,
+        'ssh_pwauth': env.lxc.ssh_pwauth,
         'admin_ssh_keys': generate_ssh_keys('   ', ssh_keys),
     }
 
@@ -268,10 +298,13 @@ EOF""" % {
                                 'release': release
                            }
     run(create_container_cmd, quiet=False)
+
+    start(name)
+
     return
 
 
-#TODO: Finish it
+#TODO: to finish ?
 #@task
 def create_new(name, release, username, ssh_key=None, locale='fr_FR.UTF-8'):
     """:name,release, username,ssh_key,locale="fr_FR.UTF-8" - Create a container named after {{name}} of {{release}} and a sudo account with {{username}} and {{sshkey}} (no password auth)."""
@@ -340,7 +373,7 @@ def get_container_ip(name):
     env.user, env.password = env.lxc.user_name, env.lxc.user_password
     ip = run("lxc-ls --fancy --fancy-format=ipv4,name | grep %s | cut -d' ' -f1" % name, quiet=True)
     (env.user, env.password) = env_backup
-    return ip
+    return ip.stdout
 
 
 @task
@@ -380,7 +413,7 @@ def get_published_ports():
     iptables_list_cmd = "iptables -n -t nat -L PREROUTING  --line-numbers"
     raw_list = sudo(iptables_list_cmd, quiet=True)
     raw_list_1 = raw_list.split('\r\n')[2:]
-    raw_list_2 = [filter(None,sublist.split(' ')) for sublist in raw_list_1]
+    raw_list_2 = [filter(None, sublist.split(' ')) for sublist in raw_list_1]
     raw_list_3 = [(rule[0], rule[-2][4:], rule[-1].split(':')[1], rule[-1].split(':')[2],) for rule in raw_list_2]
 
     env.user, env.password = env_backup
@@ -457,6 +490,7 @@ def ls():
 @task
 def start(name):
     """:name - Start container idenfified by {{name}}."""
+    env_backup = (env.user, env.password)
     env.user, env.password = env.lxc.user_name, env.lxc.user_password
     if not name:
         print colors.red("ERROR: container name is required.")
@@ -464,12 +498,15 @@ def start(name):
 
     cmd = "lxc-start -n %s -d" % name
     run(cmd)
+
+    (env.user, env.password) = env_backup
     return
 
 
 @task
 def stop(name):
     """:name - Stop container idenfified by {{name}}."""
+    env_backup = (env.user, env.password)
     env.user, env.password = env.lxc.user_name, env.lxc.user_password
     if not name:
         print colors.red("ERROR: container name is required.")
@@ -477,6 +514,7 @@ def stop(name):
 
     cmd = "lxc-stop -n %s" % name
     run(cmd)
+    (env.user, env.password) = env_backup
     return
 
 

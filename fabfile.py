@@ -101,6 +101,7 @@ env.lxc = lxc.parse_config(config_parser)
 
 class _AppserverRepository:
     enabled = False
+    server_type = 'bitbucket'
 
 
 class Repository(object):
@@ -384,7 +385,7 @@ def pg_install_db_server(pg_user=env.db_user, pg_password=env.db_password):
     pg_create_openerp_user(pg_user=pg_user, pg_password=pg_password)
 
 #
-# VMware Tools Installation (shitty)
+# VMware Tools Installation (sucks)
 #
 @task
 def sys_install_vmware_tools():
@@ -439,10 +440,12 @@ def sys_install_openerp_prerequisites():
 def get_sshkey_name():
     return 'muppy:%s@%s' % (env.adm_user, system.get_hostname(),)
 
+
 def update_ssh_key_on_private_repositories(sshkey_string):
     """
     Update ssh-key on all private repositories
     """
+
     if _AppserverRepository.server_type == 'gitlab':
         pass
     elif _AppserverRepository.server_type == 'bitbucket':
@@ -470,10 +473,10 @@ def update_ssh_key_on_private_repositories(sshkey_string):
 
 
 @task
-def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_password):
+def sys_create_openerp_user():
     """Create openerp admin user"""
-    env.user = root_user
-    env.password = root_password
+    env.user = env.root_user
+    env.password = env.root_password
 
     # create adm_user if it does not exists
     if not system.user_search(env.adm_user):
@@ -493,8 +496,8 @@ def sys_create_openerp_user(root_user=env.root_user, root_password=env.root_pass
     #echo "%openerp ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp" > /etc/sudoers.d/muppy
     #chmod 0440 /etc/sudoers.d/muppy
     # We always overwrite the file
-    # TODO: think about imporvieng this
-    sudo("echo \"%%%s ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp\" > /etc/sudoers.d/muppy" % env.adm_user)
+    # TODO: think about improving this
+    sudo("echo \"%s ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp\" > /etc/sudoers.d/muppy" % env.adm_user)
     sudo("chmod 0440 /etc/sudoers.d/muppy")
 
     # Generate a ssh key for adm_user if it does not exists
@@ -574,6 +577,7 @@ def sys_create_muppy_transactions_directory(root_user=env.root_user, root_passwo
     sudo('chmod 755 %s' % env.muppy_transactions_directory, quiet=True)
     print green("Muppy transactions directory: \"%s\" created." % env.muppy_transactions_directory)
 
+
 #
 # OpenERP related tasks
 #
@@ -632,7 +636,7 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
             run(_AppserverRepository.repository.checkout_command_line, quiet=True)
             print green("Repository \"%s\" checked out at version '%s'." % (repository_path, _AppserverRepository.repository.version,))
 
-    # Create buildout.cfg by copying template
+    # Create buildout.cfg
     buildout_cfg_path = "%s/buildout.cfg" % (repository_path, )
 #    run("cp %s.template %s" % (buildout_cfg_path, buildout_cfg_path,), quiet=True)
 
@@ -643,6 +647,7 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
     generate_buildout_cfg(buildout_cfg_path)
     print green("Repository \"%s\" cloned and buildout.cfg generated" % _AppserverRepository.repository.name)
 
+
 @task
 def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_password):
     """buildout bootstrap the application by launching install.sh"""
@@ -652,6 +657,7 @@ def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_pass
     with cd(appserver_path):
         run('./install.sh openerp')
     print green("Appserver installed.")
+
 
 @task
 def openerp_remove_appserver():
@@ -667,7 +673,8 @@ def openerp_remove_appserver():
     if exists(repository_path):
         run("rm -rf %s" % (repository_path,), quiet=True)
         print green("Existing repository \"%s\" removed." % repository_path)
-  
+
+
 @task
 def openerp_create_services(root_user=env.root_user, root_password=env.root_password):
     """Create the openerp services (classic and gunicorn) and default to openerp classic"""
@@ -695,7 +702,7 @@ def openerp_create_services(root_user=env.root_user, root_password=env.root_pass
 
 @task
 def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.root_password):
-    """Stop server, remove init-script links, delete system scripts"""
+    """Stop server, remove init.d script links, delete init.d scripts"""
     env.user = root_user
     env.password = root_password
 
@@ -717,6 +724,10 @@ def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.
 @task
 def install_openerp_application_server():
     """Install an OpenERP application server (without database)."""
+
+    if not _AppserverRepository.enabled:
+        print colors.red("ERROR: OpenERP configuration missing. Installation aborted.")
+        sys.exit(1)
 
     if env.system.install:
         system.setup_locale()
@@ -742,7 +753,11 @@ def install_openerp_application_server():
 @task
 def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True', phase3='True', phase4='True', phase5='True', phase6='True'):
     """Install a complete OpenERP appserver (including database server). You must update/upgrade system before manually"""
-    
+
+    if not _AppserverRepository.enabled:
+        print colors.red("ERROR: OpenERP configuration missing. Installation aborted.")
+        sys.exit(1)
+
     phase0 = eval(phase0)
     phase1 = eval(phase1)
     phase2 = eval(phase2)
@@ -800,6 +815,11 @@ def openerp_archive_appserver(root_user=env.root_user, root_password=env.root_pa
 @task
 def openerp_reinstall_appserver():
     """Re-install OpenERP appserver"""
+
+    if not _AppserverRepository.enabled:
+        print colors.red("ERROR: OpenERP configuration missing. Installation aborted.")
+        sys.exit(1)
+
     sys_create_openerp_user()
 
     sys_create_customer_directory()
@@ -821,7 +841,7 @@ def openerp_reinstall_appserver():
 
 @task
 def ssh(user='adm'):
-    """:adm | root | leech | lxc -  Launch an SSH session into host with corresponding user. adm_user (default) or root_user ..."""
+    """:adm | root | lxc -  Launch an SSH session into host with corresponding user. adm_user (default) or root_user ..."""
     env.user = env.adm_user
     env.password = env.adm_password
 
@@ -840,5 +860,5 @@ def ssh(user='adm'):
 
     print "Password= "+ blue("%s" % ssh_password)
     
-    ssh = subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])
+    subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])
 

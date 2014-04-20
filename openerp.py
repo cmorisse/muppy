@@ -37,7 +37,7 @@ def get_running_service():
 
 
 @task
-def stop_service():
+def stop():
     """Stop running OpenERP service wether it is running with gunicorn or classic OpenERP."""
     # This script has been designed to be really robust and accomodate buggy init scripts
 
@@ -55,7 +55,7 @@ def stop_service():
     print colors.blue("INFO: Running server is '%s'" % running_service)
 
     # we know which server is running, we can stop it
-    print colors.blue("INFO: trying to use init.d script stop command.")
+    print colors.blue("INFO: trying to use '/etc/init.d/%s stop' command." % running_service)
     if running_service == 'gunicorn-openerp':
         sudo('/etc/init.d/gunicorn-openerp stop', pty=False, quiet=True)
     else:
@@ -112,27 +112,90 @@ def stop_service():
     return return_value
 
 
-@task
-def start_service():
-    """Start the OpenERP service setup to boot"""
-    # We switch to root_user, but we preserve active usert
+def get_active_service():
+    """
+    :return: currently active inid.service: openerp-server | gunicorn-openerp
+    :rtype: str
+    """
     backup = (env.user, env.password)
+    env.user, env.password = env.root_user, env.root_password
 
+    command_return = sudo("ls /etc/rc2.d/ | grep openerp-server", quiet=True, warn_only=True)
+    if command_return.succeeded:
+        env.user, env.password = backup
+        return 'openerp-server'
+
+    command_return = sudo("ls /etc/rc2.d/ | grep unicorn-openerp", quiet=True, warn_only=True)
+    if command_return.succeeded:
+        env.user, env.password = backup
+        return 'gunicorn-openerp'
+
+    env.user, env.password = backup
+    return ''
+
+
+@task
+def show_active_script():
+    """Show the currenlty active init.d script"""
+    active_script = get_active_service()
+    if active_script:
+        print colors.green("Active init.d script is '/etc/init.d/%s'." % active_script)
+    else:
+        print colors.green("No active init.d script.")
+    return
+
+
+@task
+def set_active_script(flavor='openerp'):
+    """:flavor=openerp(default) | gunicorn - Removes currently active init.d script and set the new one."""
+    backup = (env.user, env.password)
+    env.user, env.password = env.root_user, env.root_password
+
+    active_script = get_active_service()
+    if flavor == 'openerp':
+        requested_script = 'openerp-server'
+    elif flavor == 'gunicorn':
+        requested_script = 'gunicorn-openerp'
+    else:
+        print colors.red("ERROR: unrecognized '%s' init.d script flavor." % flavor)
+        sys.exit(1)
+
+    if active_script == requested_script:
+        print colors.magento("WARNING: '/etc/init.d/%s' is already the active script." % requested_script)
+        sys.exit(0)
+
+    sudo("update-rc.d -f %s remove" % active_script, quiet=True)
+    print colors.green("INFO: '/etc/init.d/%s' removed from init scripts." % active_script)
+
+    sudo("update-rc.d %s defaults" % requested_script, quiet=True)
+    print colors.green("'/etc/init.d/%s' is now the active init.d script." % requested_script)
+
+    env.user, env.password = backup
+    return
+
+
+@task
+def start():
+    """Start the active OpenERP init.d service"""
+    backup = (env.user, env.password)
     env.user, env.password = env.root_user, env.root_password
 
     running_service = get_running_service()
     if not running_service:
-        command_return = sudo("ls /etc/rc2.d/ | grep openerp-server", quiet=True, warn_only=True)
-        if command_return.succeeded:
-            print colors.blue("INFO: Currently active init.d script is 'openerp-server'")
+        active_service = get_active_service()
+        if active_service == 'openerp-server':
+            print colors.blue("INFO: Currently active script is '/etc/init.d/openerp-server'")
             sudo('/etc/init.d/openerp-server start', pty=False, quiet=True)
             print green("OpenERP service 'openerp-server' started.")
-        else:
-            print colors.blue("INFO: Currently active init.d script is 'gunicorn-openerp'")
+        elif active_service == 'gunicorn-openerp':
+            print colors.blue("INFO: Currently active script is '/etc/init.d/gunicorn-openerp'")
             sudo('/etc/init.d/gunicorn-openerp start', pty=False, quiet=True)
             print green("OpenERP service 'gunicorn-openerp' started.")
+        else:
+            print colors.red("ERROR: Don't know what to start as there is no init.d active script.  Use set_active_script to define one.")
+            sys.exit(1)
     else:
-        print colors.magenta("WARNING: OpenERP '%s' service not started as it's already running." % running_service)
+        print colors.magenta("WARNING: OpenERP '/etc/init.d/%s' not started as it's already running." % running_service)
 
     env.user, env.password = backup
     return
@@ -148,6 +211,7 @@ def buildout():
     print colors.magenta("WARNING: Check log above for errors !")
     print colors.green("Server '%s' buildout finished." % env.openerp.repository.path)
 
+
 @task
 def show_current_revision():
     """Display current revision of application server repository"""
@@ -155,6 +219,7 @@ def show_current_revision():
     env.password = env.adm_password
     with cd(env.openerp.repository.path):
         run(env.openerp.repository.get_show_current_rev_command_line())
+
 
 @task
 def checkout_revision(refspec=None, launch_buildout='True'):
@@ -194,14 +259,14 @@ def update_appserver(database=None, addons_list='all'):
         print red("ERROR: database '%s' does not exist on server." % database)
         sys.exit(128)
 
-    stop_service()
+    stop()
 
     with cd(env.openerp.repository.path):
         run('bin/start_openerp -d %s -u %s --stop-after-init' % (database, addons_list))
 
     print green("Database '%s' updated for addon_list '%s'." % (database, addons_list,))
 
-    start_service()
+    start()
 
 
 @task
@@ -292,7 +357,7 @@ def deploy_start(databases=None, new_refspec=None):
         exit(1)
 
     # We have the lock, let's stop server and backup dbs
-    stop_service()
+    stop()
 
     # backup the databases
     update_lock_file = run('echo "\n[databases_backups]" >> %s' % (lock_file_path,), quiet=True)
@@ -358,7 +423,7 @@ def deploy_start(databases=None, new_refspec=None):
         sys.exit(1)
 
     print green("Deploy ok ; restarting OpenERP server")
-    start_service()
+    start()
     sys.exit(0)
 
 
@@ -383,7 +448,7 @@ def deploy_rollback(jobs=8):
     lock_file_parser = ConfigParser.ConfigParser()
     lock_file_parser.readfp(lock_file_object)
 
-    stop_service()
+    stop()
 
     # We checkout the repo back to old_refspec
     refspec = lock_file_parser.get("deploy", "old_refspec")
@@ -403,7 +468,7 @@ def deploy_rollback(jobs=8):
             print colors.magenta("WARNING: Database '%s' update succeeded during deploy, restoring it using backup file '%s'" % (db_name, backup_file,))
             postgresql.restore(backup_file, jobs)
 
-    start_service()
+    start()
 
     # we archive lockfile
     lockfile_archive_name = lock_file_parser.get("deploy", "log_file").split('.')[0]+".archive.cfg"
