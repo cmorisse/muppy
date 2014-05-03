@@ -45,8 +45,8 @@ trusted_ips =
 #   - RFC918_xx = any | 192.168.0.12 | 192.168.0.12/32
 #
 # Example:
-#allow_rules = tcp 192.168.0.12 any ssh   # comment
-#              tcp 22 9.9.9.0/30 # comment
+#allow_rules = tcp 192.168.0.12 any         ssh   # comment
+#              tcp any          any         8069  # everybody can use OpenERP
 #
 # Generates:
 # sudo ufw allow proto {{PROTO}} from {{RFC918_src}} to {{RFC918_dest}} port {{PORT}}

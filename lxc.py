@@ -164,9 +164,9 @@ def generate_config_template():
 
 
 @task
-def setup():
+def setup(disable_password_auth=False):
     """Install Muppy LXC Infrastructure."""
-    be_quiet= False
+    be_quiet = False
     # Note: This task is idempotent
     env.user, env.password = env.root_user, env.root_password
 
@@ -176,23 +176,8 @@ def setup():
 
     # install lxc
     # we add whois as we need mkpasswd
-    sudo("apt-get install -y lxc cgroup-lite whois", quiet=be_quiet)
-    print colors.blue("INFO: lxc, cgroup-lite installed.")
-
-    cgroup_config_cmd = """cat > /etc/init/lxc-unpriv-cgroup.conf <<EOF
-start on starting systemd-logind and started cgroup-lite
-script
-    set +e
-    echo 1 > /sys/fs/cgroup/memory/memory.use_hierarchy
-    for entry in /sys/fs/cgroup/*/cgroup.clone_children; do
-        echo 1 > $entry
-    done
-    exit 0
-end script
-EOF
-"""
-    sudo(cgroup_config_cmd, quiet=be_quiet)
-    print colors.blue("INFO: Capability groups set for unprivileged containers.")
+    sudo("apt-get install -y lxc whois", quiet=be_quiet)
+    print colors.blue("INFO: lxc installed.")
 
     # containers owner user
     system.user_create(env.lxc.user_name, env.lxc.user_password, quiet=be_quiet)
@@ -202,7 +187,14 @@ EOF
     system.user_set_ssh_authorized_keys(env.lxc.user_name, env.lxc.user_password, env.lxc.admin_ssh_keys, quiet=be_quiet)
     print colors.blue("INFO: SSH keys uploaded to user '%s' account." % env.lxc.user_name)
 
-    # TODO: disable password auth for lxc.user_name
+    # disable password auth for server
+    if disable_password_auth:
+        if not files.contains('/etc/ssh/sshd_config', "PasswordAuthentication no", use_sudo=True):
+            files.append('/etc/ssh/sshd_config', "PasswordAuthentication no", use_sudo=True)
+    else:
+        if files.contains('/etc/ssh/sshd_config', "PasswordAuthentication no", use_sudo=True):
+            # TODO: implement
+            print red("CRITICAL: You must manually remove the line 'PasswordAuthentication no' from /etc/ssh/sshd_config.")
 
     # retreive sub user ids and group ids
     sub_ids = system.user_get_sub_ids(LXCConfig.user_name, quiet=be_quiet)
@@ -212,9 +204,6 @@ EOF
     lxc_default_conf_cmd = """cat > ~/.config/lxc/default.conf <<EOF
 lxc.network.type = veth
 lxc.network.link = lxcbr0
-lxc.network.flags = up
-lxc.network.hwaddr = 00:16:3e:xx:xx:xx
-lxc.start.auto = 1
 lxc.id_map = u 0 %s %s
 lxc.id_map = g 0 %s %s
 EOF""" % sub_ids
@@ -226,14 +215,14 @@ EOF""" % sub_ids
     lxc_usernet_filename = '/etc/lxc/lxc-usernet'
     regex_str = "%s[ \t]*veth[ \t]*lxcbr0.*$" % env.lxc.user_name
 
-    # we don't use contains as it echoes garbage
+    # we don't use contains() as it echoes garbage
     #if files.contains(lxc_usernet_filename, "%-10s veth lxcbr0" % env.lxc.user_name, use_sudo=True):
-    if sudo("grep '%s' %s" % (regex_str, lxc_usernet_filename,), quiet=be_quiet).succeeded:
+    if sudo("grep '%s' %s" % (regex_str, lxc_usernet_filename,), quiet=be_quiet, warn_only=True).succeeded:
         # we remove all lines
-        sudo("sed -i.bak '/%s/d' %s" % (regex_str, lxc_usernet_filename,), quiet=be_quiet)
+        sudo("sed -i.bak '/%s/d' %s" % (regex_str, lxc_usernet_filename,), quiet=be_quiet, warn_only=True)
     # same thing for append
     #files.append(lxc_usernet_filename, "%-10s veth lxcbr0 %5s" % (env.lxc.user_name, env.lxc.max_network_interfaces_per_user,), use_sudo=True)
-    sudo("echo '%-10s veth lxcbr0 %5s' >> %s" % (env.lxc.user_name, env.lxc.max_network_interfaces_per_user, lxc_usernet_filename,), quiet=True)
+    sudo("echo '%-10s veth lxcbr0 %5s' >> %s" % (env.lxc.user_name, env.lxc.max_network_interfaces_per_user, lxc_usernet_filename,), quiet=be_quiet, warn_only=True)
 
     print colors.blue("INFO: '%s' allowed to use %s network interfaces in all containers." % (env.lxc.user_name, env.lxc.max_network_interfaces_per_user,))
 
@@ -298,9 +287,7 @@ EOF""" % {
                                 'release': release
                            }
     run(create_container_cmd, quiet=False)
-
     start(name)
-
     return
 
 
