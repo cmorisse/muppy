@@ -219,9 +219,8 @@ def put_backup_file(local_backup_file_path=None, force=False):
     return
 
 
-
 #
-# Due to bash syntax syntax we cannot use Jinja or python string
+# Due to bash syntax we cannot use Jinja or python string
 # interpolation syntax.
 # So we build our own string.Template class using '_@@' as delimiter
 #
@@ -237,7 +236,6 @@ def install_backup_script():
 
     run('mkdir -p %s' % env.postgresql.backup_scripts_directory)
     run('mkdir -p %s/postgresql' % env.postgresql.backup_root_directory, quiet=True)
-
 
     template_context = {
         'backup_root_directory': env.postgresql.backup_root_directory,

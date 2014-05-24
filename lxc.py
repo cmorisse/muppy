@@ -75,6 +75,10 @@ TEMPLATE_CFG_SECTION = """
 #
 #admin_ssh_key =
 
+
+published_ports = ...
+# under development
+
 """
 
 
@@ -152,6 +156,17 @@ def parse_config(config_parser):
     raw_admin_ssh_keys = config_parser.get('lxc', 'admin_ssh_keys')
     raw_admin_ssh_keys = filter(None, raw_admin_ssh_keys.split('\n'))  # split on each line filtering empty ones
     LXCConfig.admin_ssh_keys = raw_admin_ssh_keys
+
+    # published_ports_list for automated republication (at reboot)
+    if config_parser.has_option('lxc', 'published_ports') and config_parser.get('lxc', 'published_ports'):
+        # decompose in case we will be back on this
+        raw_published_port_list = config_parser.get('lxc', 'published_ports')
+        raw_published_port_list = filter(None, raw_published_port_list.split('\n'))  # split on each line filtering empty ones
+        raw_published_port_list = [(p.split(',')[0], p.split(',')[1], p.split(',')[2],) for p in raw_published_port_list]
+
+        LXCConfig.published_ports_list = raw_published_port_list
+    else:
+        LXCConfig.published_ports_list = []
 
     LXCConfig.enabled = True
     return LXCConfig
@@ -364,6 +379,13 @@ def get_container_ip(name):
 
 
 @task
+def republish_ports():
+    """Republish ports defined in .cfg file lxc.published_ports section"""
+    for publication in LXCConfig.published_ports_list:
+        publish_port(publication[0], publication[1], publication[2])
+
+
+@task
 def publish_port(name, private_port, public_port):
     """:name,private_port,public_port - setup a Port Translation of {{private port}} of container identified by {{name}} to {{public_port}."""
     env.user, env.password = env.root_user, env.root_password
@@ -421,7 +443,7 @@ def unpublish_port(number):
 
 
 @task
-def list_published_ports():
+def list_published_ports(format_for='human'):
     """List all containers published ports."""
     env_backup = (env.user, env.password)
 
@@ -430,9 +452,15 @@ def list_published_ports():
     published_port_list = get_published_ports()
     container_list = get_container_list()
 
-    print "Number Public_port Container_IP    Container_name       Private_port"
-    for entry in published_port_list:
-        print "%6s %11s %-15s %-20s %12s" % (entry[0], entry[1], entry[2], get_container_for_ip(entry[2], container_list), entry[3])
+    if format_for == 'human':
+        print "Number Public_port Container_IP    Container_name       Private_port"
+        for entry in published_port_list:
+            print "%6s %11s %-15s %-20s %12s" % (entry[0], entry[1], entry[2], get_container_for_ip(entry[2], container_list), entry[3])
+    else:
+        for entry in published_port_list:
+            print "%s,%s,%s" % (get_container_for_ip(entry[2], container_list), entry[3], entry[1],)
+
+
     env.user, env.password = env_backup
     return
 

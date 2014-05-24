@@ -11,6 +11,8 @@ import subprocess
 import StringIO
 
 import muppy_utils
+from bitbucket import BitbucketRepository
+from gitlab_driver import GitlabRepository
 
 from muppy_magento import *
 import vagrant
@@ -104,216 +106,12 @@ class _AppserverRepository:
     server_type = 'bitbucket'
 
 
-class Repository(object):
-    def __init__(self, user, password, url, base_path):
-        self.dvcs, self.clone_url, self.destination_directory, self.version, self.name, \
-            self.owner, self.protocol = Repository.parse_appserver_url(url)
-
-        self.user = user
-        self.password = password
-
-        self.base_path = base_path
-
-    @staticmethod
-    def parse_appserver_url(url):
-        """
-        Accept a appserver_url of the form: {dvcs} {clone_url} [destination_directory] [version]
-        :returns a list of 7 elements:
-        [
-            dvcs,
-            clone_url,
-            destination_directory,
-            version,
-            repository_name,
-            owner_name,
-            protocol
-        ]
-        """
-        ret_list = [None] * 7  # Create a list of 7 None elements
-    
-        url_components = url.split(' ')
-        ret_list[0:len(url_components)] = url_components  # Feed what we can
-    
-        if ret_list[0] not in ('git', 'hg'):
-            print red("Error: unsupported dvcs : %s. Must be 'hg' or 'git'." % ret_list[0])
-    
-        # we extrace repository name from url
-        if ret_list[0] == 'git':
-            if ret_list[1].startswith('git'):
-                owner_name = ret_list[1].split(':')[1].split('/')[0]
-                repository_name = ret_list[1].split(':')[1].split('/')[-1][:-4]
-            else:
-                # https
-                owner_name = ret_list[1].split('/')[-2]
-                repository_name = ret_list[1].split('/')[-1][:-4]
-        else:
-            # mercurial
-            owner_name = ret_list[1].split('/')[-2]
-            repository_name = ret_list[1].split('/')[-1]
-    
-        ret_list[4] = repository_name
-        ret_list[5] = owner_name
-    
-        # protocol
-        protocol_prefix = ret_list[1][:3]
-        ret_list[6] = 'ssh' if protocol_prefix in ('git', 'ssh',) else 'https'
-
-        # let destination_directory to repository_name if undefined
-        ret_list[2] = ret_list[2] or ret_list[4]
-
-        return ret_list
-
-    @property
-    def hostname(self):
-        if self.clone_url.startswith('git'):
-            return self.clone_url.split(':')[0].split('@')[1]
-        elif self.clone_url.startswith('http'):
-            subs = self.clone_url.split('//')[1].split('/')[0]
-            if subs.find('@') > 0:
-                return subs.split('@')[1]
-            return subs
-        elif self.clone_url.startswith('ssh'):
-            return self.clone_url.split('//')[1].split('/')[0].split('@')[1]
-        return ''
-
-    @property
-    def path(self):
-        return os.path.join(self.base_path, self.destination_directory)
-
-    def get_refspec_command_line(self):
-        """Returns shell command to retrieve current active revision in repository"""
-        if self.dvcs == 'git':
-            return 'git rev-parse --verify HEAD'
-        elif self.dvcs == 'hg':
-            # mercurial
-            return 'hg id -i'
-
-    def get_show_current_rev_command_line(self):
-        """Returns shell command to display info about current revision in repository"""
-        if self.dvcs == 'git':
-            return 'git show --format=medium -s HEAD'
-        elif self.dvcs == 'hg':
-            return 'hg sum'
-
-    def get_fetch_command_line(self, source=''):
-        """Returns a git fetch or hg pull command line"""
-        if self.dvcs == 'git':
-            return 'git fetch origin %s' % source
-        elif self.dvcs == 'hg':  # mercurial
-            return 'hg pull %s' % source
-    
-    def get_checkout_command_line(self, refspec):
-        """Returns a git checkout or hg update command line"""
-        if self.dvcs == 'git':
-            return 'git checkout %s' % refspec
-        elif self.dvcs == 'hg':  # mercurial
-            return 'hg update %s' % refspec
-
-
-class BitbucketRepository(Repository):
-
-    def __init__(self, user, password, url, base_path):
-        super(BitbucketRepository, self).__init__(user, password, url, base_path)
-
-    def search_deployment_key(self, key_name=''):
-        if not key_name:
-            return []
-        url = "https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (self.owner, self.name)
-        response = requests.get(url, auth=(self.user, self.password))
-        if response.status_code != requests.codes.ok:
-            return []
-
-        key_list = response.json()
-        result = [key['pk'] for key in key_list if str(key['label']) == key_name]
-        return result
-
-    def post_deployment_key(self, key_name, key_string):
-        """
-        Upload a deployment key to repo
-        :param key_name: Name of the key to upload (bitbucket's label).
-        :type key_name: str
-        :param key_string: SSH Key
-        :type key_string: str
-        :return: True or False
-        :rtype: boolean
-        """
-        url = "https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/" % (self.owner, self.name,)
-        auth = (self.user, self.password,)
-        data = {
-            'label': key_name,
-            'key': key_string
-        }
-        res = requests.post(url, auth=auth, data=data)
-        if res.status_code != requests.codes.ok:
-            print red("Error: Unable to upload deployment key to bitbucket.")
-            return False
-        return True
-
-    def delete_deployment_key(self, pk):
-        """
-        Delete deployment key
-        :param pk: a bitbucket pk
-        :type pk: str or int
-        :return: True or False
-        :rtype: boolean
-        """
-        url = "https://api.bitbucket.org/1.0/repositories/%s/%s/deploy-keys/%s" % (self.owner, self.name, pk)
-        auth = (self.user, self.password,)
-        response = requests.delete(url, auth=auth)
-        if response.status_code != 204:  # Bitbucket : WTF 204 ?? !!!!
-            return False
-        return True
-
-    def update_deployment_key(self, key_name, key_string):
-        """
-        Delete existing deployment keys named as key_name, then upload a new one
-        :param key_name: Name of the key to update (bitbucket's label).
-        :type key_name: str
-        :param key_string: SSH Key
-        :type key_string: str
-        :return: True or False
-        :rtype: boolean
-        """
-        # for update, we don't bother if key do not exists
-        keys = self.search_deployment_key(key_name)
-        for key in keys:
-            self.delete_deployment_key(key)
-        return self.post_deployment_key(key_name, key_string)
-
-    @property
-    def clone_command_line(self):
-        if self.dvcs == 'hg':
-            if self.version:
-                return "hg clone -y -r %s %s %s" % (self.version, self.clone_url, self.destination_directory,)
-            return "hg clone -y %s %s" % (self.clone_url, self.destination_directory,)
-
-        # elif self.dvcs == 'git':
-        return "git clone %s %s" % (self.clone_url, self.destination_directory,)
-
-    @property
-    def checkout_command_line(self):
-        if not self.version:
-            return ''
-        if self.dvcs == 'hg':
-            return "hg update %s" % (self.version,)
-        # elif self.dvcs == 'git':
-        return "git checkout %s" % (self.version,)
-
-    @property
-    def pull_command_line(self):
-        if self.dvcs == 'hg':
-            return "hg pull -u'"
-        # elif self.dvcs == 'git':
-        return "git pull origin master"
-
-
 if config_parser.has_section('appserver_repository'):
     _AppserverRepository.server_type = config_parser.get('appserver_repository', 'server_type')
     if _AppserverRepository.server_type not in ('gitlab', 'bitbucket'):
         print red("Error: Unsupported value for appserver_repository.server_type : %s" % _AppserverRepository.server_type)
         exit(-1)
     _AppserverRepository.appserver_url = (config_parser.has_option('appserver_repository', 'appserver_url') and config_parser.get('appserver_repository', 'appserver_url')) or "git git@bitbucket.org:cmorisse/appserver-templatev7.git"
-    _AppserverRepository.other_private_repo_urls = (config_parser.has_option('appserver_repository', 'other_private_repo_urls') and config_parser.get('appserver_repository', 'other_private_repo_urls')) or ''
 
     str_to_eval = config_parser.get('appserver_repository', 'user')
     _AppserverRepository.user = eval(str_to_eval, {'os': os})
@@ -326,6 +124,34 @@ if config_parser.has_section('appserver_repository'):
                                                               _AppserverRepository.password,
                                                               _AppserverRepository.appserver_url,
                                                               env.customer_path)
+    elif _AppserverRepository.server_type == 'gitlab':
+        _AppserverRepository.repository = GitlabRepository(_AppserverRepository.user,
+                                                           _AppserverRepository.password,
+                                                           _AppserverRepository.appserver_url,
+                                                           env.customer_path)
+
+    # we build a list of others private repositories
+    _AppserverRepository.other_private_repo_urls = (config_parser.has_option('appserver_repository', 'other_private_repo_urls') and config_parser.get('appserver_repository', 'other_private_repo_urls')) or ''
+    repositories_url_list = [] or (_AppserverRepository.other_private_repo_urls and _AppserverRepository.other_private_repo_urls.split('\n'))
+    repositories_list = []
+    for repository_url in repositories_url_list:
+        if _AppserverRepository.server_type == 'bitbucket':
+            repository = BitbucketRepository(_AppserverRepository.user,
+                                             _AppserverRepository.password,
+                                             repository_url,
+                                             env.customer_path)
+        elif _AppserverRepository.server_type == 'gitlab':
+            repository = GitlabRepository(_AppserverRepository.user,
+                                          _AppserverRepository.password,
+                                          repository_url,
+                                          env.customer_path)
+        #elif _AppserverRepository.server_type == 'github':
+        else:
+            raise exception("Repository server type '%s' not implemented" % _AppserverRepository.server_type)
+
+        repositories_list.append(repository)
+    _AppserverRepository.other_private_repositories = repositories_list\
+
     _AppserverRepository.enabled = True
     env.openerp = _AppserverRepository
 
@@ -419,7 +245,10 @@ def sys_install_openerp_prerequisites():
     env.password = env.root_password
 
     # TODO All of this must move to the repository install.sh
-    sudo('wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py')
+    # TODO: or add some logic to handle different versions behaviour
+    #sudo('wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py')
+    sudo('curl https://bootstrap.pypa.io/ez_setup.py -o ez_setup.py')
+
     sudo('python ez_setup.py')
     sudo('rm ez_setup.py')
 
@@ -440,36 +269,43 @@ def sys_install_openerp_prerequisites():
 def get_sshkey_name():
     return 'muppy:%s@%s' % (env.adm_user, system.get_hostname(),)
 
+def download_ssh_key():
+    # download ssh key
+    host_name = system.get_hostname()
+    ssh_key_file_name = 'ssh_keys_temp/%s__%s__id_rsa.pub' % (host_name, env.adm_user,)
+    get('/home/%s/.ssh/id_rsa.pub' % (env.adm_user,), ssh_key_file_name)
+    ssh_key_file = open(ssh_key_file_name)
+    ssh_key_string = ssh_key_file.read()
+    return ssh_key_string 
 
-def update_ssh_key_on_private_repositories(sshkey_string):
-    """
-    Update ssh-key on all private repositories
-    """
 
-    if _AppserverRepository.server_type == 'gitlab':
-        pass
-    elif _AppserverRepository.server_type == 'bitbucket':
-        # first we update key on appserver repository
-        repo = BitbucketRepository(_AppserverRepository.user,
-                                   _AppserverRepository.password,
-                                   _AppserverRepository.appserver_url,
-                                   env.customer_path)
-        if repo.update_deployment_key(get_sshkey_name(), sshkey_string):
-            print green("Deployment key (%s) successfully added to bitbucket repository \"%s\"." % (get_sshkey_name(), repo.name))
+@task
+def update_ssh_key_on_private_repositories(sshkey_string=None):
+    """Update ssh-key on all private repositories"""
+    env.user = env.adm_user
+    env.password = env.adm_password
+
+    if not sshkey_string:
+        sshkey_string = download_ssh_key()
+
+    if env.openerp.repository.update_deployment_key(get_sshkey_name(), sshkey_string):
+        print green("Deployment key (%s) successfully added to %s repository \"%s\"." % (get_sshkey_name(),
+                                                                                         env.openerp.server_type,
+                                                                                         env.openerp.repository.name))
+    else:
+        print red("Error: Unable to update deployment key on %s repository :%s/%s" % (env.openerp.repository.owner,
+                                                                                      env.openerp.repository.server_type,
+                                                                                      env.openerp.repository.name,))
+    # then we update keys on others private repositories
+    for repository in env.openerp.other_private_repositories:
+        if repository.update_deployment_key(get_sshkey_name(), sshkey_string):
+            print green("Deployment key (%s) successfully uploaded to bitbucket repository %s/%s." % (get_sshkey_name(),
+                                                                                                      repository.owner,
+                                                                                                      repository.name,))
         else:
-            print red("Error: Unable to update deployment key for bitbucket repository :%s/%s" % (repo.owner, repo.name))
-
-        # then we update keys on others repositories
-        repo_url_list = [] or (_AppserverRepository.other_private_repo_urls and _AppserverRepository.other_private_repo_urls.split('\n'))
-        for repo_url in repo_url_list:
-            repo = BitbucketRepository(_AppserverRepository.user,
-                                       _AppserverRepository.password,
-                                       repo_url,
-                                       env.customer_path)
-            if repo.update_deployment_key(get_sshkey_name(), sshkey_string):
-                print green("Deployment key (%s) successfully uploaded to bitbucket repository %s/%s." % (get_sshkey_name(), repo.owner, repo.name,))
-            else:
-                print red("Error: Unable to update deployment key (%s) for bitbucket repository :%s/%s" % (get_sshkey_name(), repo.owner, repo.name))
+            print red("Error: Unable to update deployment key (%s) for bitbucket repository :%s/%s" % (get_sshkey_name(),
+                                                                                                       repository.owner,
+                                                                                                       repository.name))
 
 
 @task
@@ -513,11 +349,7 @@ def sys_create_openerp_user():
         run("ssh-keygen -t rsa -N \"\" -f ~/.ssh/id_rsa")
 
     # download ssh key
-    host_name = system.get_hostname()
-    ssh_key_file_name = 'ssh_keys_temp/%s__%s__id_rsa.pub' % (host_name, env.adm_user,)
-    get('/home/%s/.ssh/id_rsa.pub' % (env.adm_user,), ssh_key_file_name)
-    ssh_key_file = open(ssh_key_file_name)
-    ssh_key_string = ssh_key_file.read()
+    ssh_key_string = download_ssh_key()
 
     # update ssh-key on all private repositories
     update_ssh_key_on_private_repositories(ssh_key_string)
@@ -813,7 +645,7 @@ def openerp_archive_appserver(root_user=env.root_user, root_password=env.root_pa
     """Archive the appserver directory into a directory named appserver.archived_YYYY-MM-DD"""
     env.user = root_user
     env.password = root_password
-    repository_path = "%s/%s" % (env.customer_path, _AppserverRepository.repository.desdestination_directory,)
+    repository_path = "%s/%s" % (env.customer_path, _AppserverRepository.repository.destination_directory,)
 
     sudo('rm -rf %s.achived_%s' % (repository_path, datetime.date.today()))
     sudo('mv %s %s.achived_%s' % (repository_path, repository_path, datetime.date.today(),))

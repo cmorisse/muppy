@@ -9,6 +9,7 @@ import string
 
 from muppy_utils import *
 import postgresql
+
 """
 OpenERP Application Server related tasks
 """
@@ -206,6 +207,7 @@ def buildout():
     """Launch a bin/buildout."""
     env.user = env.adm_user
     env.password = env.adm_password
+
     with cd(env.openerp.repository.path):
         run('bin/buildout')
     print colors.magenta("WARNING: Check log above for errors !")
