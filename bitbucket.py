@@ -39,7 +39,7 @@ class BitbucketRepository(Repository):
         }
         res = requests.post(url, auth=auth, data=data)
         if res.status_code != requests.codes.ok:
-            print red("Error: Unable to upload deployment key to bitbucket.")
+            print colors.red("Error: Unable to upload deployment key to bitbucket.")
             return False
         return True
 

@@ -72,6 +72,24 @@ def parse_config(config_parser):
 
     return SystemConfig
 
+
+@task
+def prerequisites():
+    """Install System Prerequisites."""
+    backup_user, backup_password = env.user, env.password
+    env.user, env.password = env.root_user, env.root_password
+
+    runner = sudo if env.linux_distribution == 'ubuntu' else run
+    
+    runner('apt-get update --fix-missing')
+    runner('apt-get install -y curl vim htop python tmux git mercurial bzr')
+    runner('apt-get install -y sudo')
+
+    print colors.green("System prerequisites installed.")
+    env.user, env.password = backup_user, backup_password
+    return
+
+
 @task
 def setup_locale(locale=None):
     """
@@ -173,8 +191,8 @@ def user_exists(username):
 @task
 def get_hostname():
     env_backup = (env.user, env.password,)
-
     env.user, env.password = env.root_user, env.root_password
+
     hostname = run("hostname", warn_only=True, quiet=True)
 
     (env.user, env.password,) = env_backup
@@ -238,7 +256,7 @@ def user_get_sub_ids(username, quiet=False):
 def user_set_ssh_authorized_keys(username, password, ssh_keys, quiet=False):
     """
     Upload a set of ssh keys into a user account.
-    Warning: this does add the keys but replace all keys the one supplied !
+    Warning: this DOES NOT add the keys but replace all keys with supplied ones !
     :param ssh_keys: list of ssh keys (id_rsa.pub content)
     :type ssh_keys: list
     :param quiet:

@@ -43,6 +43,11 @@ if not config_parser.has_option('env', 'muppy_version') or not __version__.start
     exit(0)
 
 
+if config_parser.has_option('env', 'linux_distribution'):
+    env.linux_distribution = config_parser.get('env', 'linux_distribution')
+else:
+    env.linux_distribution = 'ubuntu'
+
 if config_parser.has_option('env', 'hosts'):
     env.hosts = config_parser.get('env', 'hosts').split(',')
 env.root_user = config_parser.get('env', 'root_user')
@@ -158,12 +163,12 @@ if config_parser.has_section('appserver_repository'):
 
 @task
 def mupping(root_user=env.root_user, root_password=env.root_password):
-    """Mup"ping": try to run ls then sudo ls over ssh"""
+    """Mup"ping": try to run ls over ssh"""
     env.user = root_user
     env.password = root_password
     run("ls /") 
-    sudo("ls /")   
     return
+
 
 #
 # PostgreSQL Installation related functions
@@ -173,7 +178,7 @@ def pg_install_server():
     """Install Postgresql Server and CLI Client."""
     env.user = env.root_user
     env.password = env.root_password
-    
+
     sudo('apt-get update --fix-missing')
     sudo('apt-get install -y postgresql graphviz postgresql-client')
     print green("PosgreSQL server and client installed.")
@@ -237,12 +242,33 @@ def sys_install_vmware_tools():
 # System related tasks
 #
 
+@task
+def get_system_version(format_for='human'):
+    """Retrieve system version"""
+    env_backup = (env.user, env.password,)
+    # we use root_user as it is always defined in config even for lxc
+    env.user, env.password = env.root_user, env.root_password
+    
+    result = run("python -c \"import platform;print(platform.linux_distribution())\"", quiet=True)
+    if result.failed:
+        return None
+
+    if format_for == 'human':
+        result_as_string = ",".join(eval(result))
+        print(result_as_string)
+        (env.user, env.password,) = env_backup 
+        return result_as_string
+
+
+    (env.user, env.password,) = env_backup 
+    return eval(result)
 
 @task
 def sys_install_openerp_prerequisites():
     """Install all ubuntu packages required for OpenERP Server (run as root_user)"""
     env.user = env.root_user
     env.password = env.root_password
+
 
     # TODO All of this must move to the repository install.sh
     # TODO: or add some logic to handle different versions behaviour
@@ -252,7 +278,7 @@ def sys_install_openerp_prerequisites():
     sudo('python ez_setup.py')
     sudo('rm ez_setup.py')
 
-    sudo("easy_install virtualenv==1.11.4")
+    sudo("easy_install virtualenv==1.11.6")
 
     sudo("apt-get install -y python-dev libz-dev")
     sudo("apt-get install -y libxml2-dev libxslt1-dev")
@@ -262,22 +288,18 @@ def sys_install_openerp_prerequisites():
     sudo("apt-get install -y libyaml-dev")
     sudo("apt-get install -y bzr mercurial git")
     sudo("apt-get install -y curl htop vim tmux")
-
     print green("OpenERP prerequisites installed.")
-
 
 def get_sshkey_name():
     return 'muppy:%s@%s' % (env.adm_user, system.get_hostname(),)
 
 def download_ssh_key():
     # download ssh key
-    host_name = system.get_hostname()
-    ssh_key_file_name = 'ssh_keys_temp/%s__%s__id_rsa.pub' % (host_name, env.adm_user,)
-    get('/home/%s/.ssh/id_rsa.pub' % (env.adm_user,), ssh_key_file_name)
-    ssh_key_file = open(ssh_key_file_name)
-    ssh_key_string = ssh_key_file.read()
-    return ssh_key_string 
-
+    env_backup = (env.user, env.password,)
+    env.user, env.password = env.adm_user, env.adm_password
+    result = run('cat /home/%s/.ssh/id_rsa.pub' % env.adm_user )
+    env.user, env.password = env_backup
+    return result
 
 @task
 def update_ssh_key_on_private_repositories(sshkey_string=None):
@@ -293,8 +315,8 @@ def update_ssh_key_on_private_repositories(sshkey_string=None):
                                                                                          env.openerp.server_type,
                                                                                          env.openerp.repository.name))
     else:
-        print red("Error: Unable to update deployment key on %s repository :%s/%s" % (env.openerp.repository.owner,
-                                                                                      env.openerp.repository.server_type,
+        print red("Error: Unable to update deployment key on %s repository: %s/%s" % (env.openerp.repository.owner,
+                                                                                      env.openerp.server_type,
                                                                                       env.openerp.repository.name,))
     # then we update keys on others private repositories
     for repository in env.openerp.other_private_repositories:
@@ -307,12 +329,12 @@ def update_ssh_key_on_private_repositories(sshkey_string=None):
                                                                                                        repository.owner,
                                                                                                        repository.name))
 
-
 @task
 def sys_create_openerp_user():
     """Create openerp admin user"""
     env.user = env.root_user
     env.password = env.root_password
+
 
     # create adm_user if it does not exists
     if not system.user_search(env.adm_user):
@@ -432,15 +454,16 @@ def generate_buildout_cfg(buildout_cfg_path, base_template_name="buildout.cfg.te
     env_backup = (env.user, env.password,)
     env.user, env.password = env.adm_user, env.adm_password
 
-    buildout_content = """[buildout]
+    generate_buildout_content_cmd = """cat > %s <<EOF
+[buildout]
 extends = %s
 [openerp]
 options.admin_passwd = %s
 options.db_user = %s
 options.db_password = %s
-""" % (base_template_name, env.openerp_admin_password, env.db_user, env.db_password,)
+EOF""" % (buildout_cfg_path, base_template_name, env.openerp_admin_password, env.db_user, env.db_password,)
 
-    put(StringIO.StringIO(buildout_content), buildout_cfg_path)
+    run(generate_buildout_content_cmd)
     (env.user, env.password,) = env_backup 
     return
 
@@ -476,13 +499,8 @@ def openerp_clone_appserver(adm_user=env.adm_user, adm_password=env.adm_password
 
     # Create buildout.cfg
     buildout_cfg_path = "%s/buildout.cfg" % (repository_path, )
-#    run("cp %s.template %s" % (buildout_cfg_path, buildout_cfg_path,), quiet=True)
-
-    # Adjust buildout.cfg content
- #   sed(buildout_cfg_path, "\{\{pg_user\}\}", sed_escape(env.db_user))
- #   sed(buildout_cfg_path, "\{\{pg_password\}\}", sed_escape(env.db_password))
- #   sed(buildout_cfg_path, "\{\{openerp_admin_password\}\}", sed_escape(env.openerp_admin_password))
     generate_buildout_cfg(buildout_cfg_path)
+
     print green("Repository \"%s\" cloned and buildout.cfg generated" % _AppserverRepository.repository.name)
 
 
@@ -514,10 +532,10 @@ def openerp_remove_appserver():
 
 
 @task
-def openerp_create_services(root_user=env.root_user, root_password=env.root_password):
+def openerp_create_services():
     """Create the openerp services (classic and gunicorn) and default to openerp classic"""
-    env.user = root_user
-    env.password = root_password
+    env.user = env.root_user
+    env.password = env.root_password
 
     appserver_path = '%s/%s/' % (env.customer_path, _AppserverRepository.repository.destination_directory, )
 
@@ -525,8 +543,8 @@ def openerp_create_services(root_user=env.root_user, root_password=env.root_pass
         'muppy_appserver_path': appserver_path,
         'muppy_adm_user': env.adm_user
     }
-    upload_template('scripts/openerp-server', '/etc/init.d/openerp-server', context=replace_ctx, use_sudo=True, backup=True, use_jinja=True)
-    upload_template('scripts/gunicorn-openerp', '/etc/init.d/gunicorn-openerp', context=replace_ctx, use_sudo=True, backup=True, use_jinja=True)
+    muppy_utils.upload_template('scripts/openerp-server', '/etc/init.d/openerp-server', context=replace_ctx, use_sudo=True)
+    muppy_utils.upload_template('scripts/gunicorn-openerp', '/etc/init.d/gunicorn-openerp', context=replace_ctx, use_sudo=True)
 
     sudo('chmod 755 /etc/init.d/openerp-server')
     sudo('chown %s:root /etc/init.d/openerp-server' % env.adm_user)
@@ -566,6 +584,8 @@ def install_openerp_application_server():
     if not _AppserverRepository.enabled:
         print colors.red("ERROR: OpenERP configuration missing. Installation aborted.")
         sys.exit(1)
+    
+    system.prerequisites()
 
     if env.system.install:
         system.setup_locale()
@@ -603,6 +623,8 @@ def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True
     phase4 = eval(phase4)
     phase5 = eval(phase5)
     phase6 = eval(phase6)
+
+    system.prerequisites()
 
     # Install locale !
     if phase0:

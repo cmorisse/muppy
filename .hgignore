@@ -11,6 +11,7 @@ syntax: glob
 .pydevproject
 .settings
 todelete/
+eggs_todelete/
 
 ; For bootstrap
 bin

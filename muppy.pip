@@ -1,7 +1,7 @@
-Fabric==1.8.1
+Fabric==1.9
 Jinja2==2.6
 Pygments==1.6
-paramiko==1.12.1
+paramiko==1.14
 pycrypto==2.6.1
 requests==1.2.0
 urwid==1.1.1

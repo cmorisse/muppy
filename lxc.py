@@ -410,6 +410,7 @@ def publish_port(name, private_port, public_port):
                         'private_port': private_port,
                         'public_interface': env.lxc.public_interface,
                     }
+
     sudo(iptables_cmd)
     return
 
