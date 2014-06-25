@@ -213,7 +213,7 @@ def put_backup_file(local_backup_file_path=None, force=False):
             print red("Upload aborted ; remote file untouched.")
             sys.exit(126)
 
-    put(local_backup_file_path, env.postgresql.backup_files_directory)
+    put(local_backup_file_path, remote_backup_file_path)
 
     env.user, env.password = env_backup
     return
