@@ -86,7 +86,7 @@ def parse_config(config_parser):
 
     # trusted_ips is mandatory and must at least contains user ip
     if not config_parser.has_option('security', 'trusted_ips'):
-        print red("trusted_ips config is required in security section !!")
+        print colors.red("trusted_ips config is required in security section !!")
         sys.exit(1)
 
     # will decompose in case we will be back on this

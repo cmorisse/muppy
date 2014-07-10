@@ -52,6 +52,7 @@ def stop():
 
     if not running_service:
         print colors.magenta("WARNING: Did not find any running openerp service to stop !")
+        env.user, env.password = backup
         return True
     print colors.blue("INFO: Running server is '%s'" % running_service)
 
@@ -302,7 +303,7 @@ def deploy_start(databases=None, new_refspec=None):
     #       restore by hand if needed
 
     env.user, env.password = env.adm_user, env.adm_password
-
+    
     if not databases:
         print red("ERROR: missing required database list parameter.")
         sys.exit(128)

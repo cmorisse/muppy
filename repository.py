@@ -33,7 +33,7 @@ class Repository(object):
         ret_list[0:len(url_components)] = url_components  # Feed what we can
 
         if ret_list[0] not in ('git', 'hg'):
-            print red("Error: unsupported dvcs : %s. Must be 'hg' or 'git'." % ret_list[0])
+            print colors.red("Error: unsupported dvcs : %s. Must be 'hg' or 'git'." % ret_list[0])
 
         # we extrace repository name from url
         if ret_list[0] == 'git':
