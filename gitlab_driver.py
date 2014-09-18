@@ -22,7 +22,7 @@ class GitlabRepository(Repository):
                     self.gitlab_project_id = project['id']
 
             i += 1
-            projects = self.gitlab.getprojects(page=i)
+            projects = self.gitlab.getprojects(page=i, per_page=100)
         if not self.gitlab_project_id:
             raise Exception("Gitlab Error", "Unable to find Gitlab repository: %s" % self.clone_url)
 
