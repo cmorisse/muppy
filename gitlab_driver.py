@@ -13,10 +13,16 @@ class GitlabRepository(Repository):
         self.gitlab.login(self.user, self.password)
 
         self.gitlab_project_id = None
-        projects = self.gitlab.getprojects()
-        for project in projects:
-            if project['path_with_namespace'] == "%s/%s" % (self.owner, self.name,):
-                self.gitlab_project_id = project['id']
+        i = 1
+        projects = self.gitlab.getprojects(page=i, per_page=100)
+
+        while projects and not self.gitlab_project_id:
+            for project in projects:
+                if project['path_with_namespace'] == "%s/%s" % (self.owner, self.name,):
+                    self.gitlab_project_id = project['id']
+
+            i += 1
+            projects = self.gitlab.getprojects(page=i)
         if not self.gitlab_project_id:
             raise Exception("Gitlab Error", "Unable to find Gitlab repository: %s" % self.clone_url)
 
