@@ -34,7 +34,11 @@ class GitlabRepository(Repository):
         """
         if not key_name:
             return []
+            
         all_keys_list = self.gitlab.listdeploykeys(self.gitlab_project_id)
+
+        if not all_keys_list:
+            return []
         keys_list = filter(None, [key['id'] if key['title'] == key_name else None for key in all_keys_list])
         return keys_list
 
