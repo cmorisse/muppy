@@ -61,3 +61,5 @@ adm_user is a system user created by muppy that will own and run openerp.
 
 This user may be or not in the sudo group depending on the value of the _adm_user_is_sudoer_ parameter.
 
+## Licence
+Muppy is AGPL Licenced
