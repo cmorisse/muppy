@@ -37,3 +37,5 @@ backups/
 *.log
 draft/
 bash_scripts/
+
+docker/
