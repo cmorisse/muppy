@@ -163,7 +163,7 @@ def set_active_script(flavor='openerp'):
         sys.exit(1)
 
     if active_script == requested_script:
-        print colors.magento("WARNING: '/etc/init.d/%s' is already the active script." % requested_script)
+        print colors.magenta("WARNING: '/etc/init.d/%s' is already the active script." % requested_script)
         sys.exit(0)
 
     sudo("update-rc.d -f %s remove" % active_script, quiet=True)

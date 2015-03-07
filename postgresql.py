@@ -11,6 +11,43 @@ from muppy_utils import *
 PostgreSQL related tasks
 """
 
+TEMPLATE_CFG_SECTION = """
+
+[postgresql]
+#
+# Automated daily backup
+# Muppy contains a postgresql backup script that can be installed and setup in CRON
+#
+# backup_root_directory
+# backup files are stored in {{backup_root_directory}}/data
+# backup scripts are stored in {{backup_root_directory/scripts}}
+#backup_root_directory={{env.backup_directory}}
+
+#
+# backup_email_recipients
+# Each time it runs, the backup script mails the backup log to the following recipients
+# if undefined, backup log is not sent ; but just stored in the backup data directory
+# Note that muppy do not install nor configure postfix
+# recients are comma separated. eg. cmo@domain.com,aba@domain.net
+#backup_email_recipients =
+
+# The number of days each backup file is kept before it is deleted
+#backup_retention_period_in_days = 7
+
+# The cron values.
+# By default backup is launched at 2:00 every day
+#backup_cron_m_h_dom_mon_dow = "00 2 * * *"
+
+#
+# activate_dropbox_integration
+# Defines if backup script will update backup files to Dropbox.
+# Note that this option requires extra configuration steps
+#activate_dropbox_integration = False
+
+
+
+"""
+
 
 class PostgreSQLConfig:
     pass
@@ -20,13 +57,14 @@ def parse_config(config_parser):
     # Automated daily backup options
     PostgreSQLConfig.backup_root_directory = (config_parser.has_option('postgresql', 'backup_root_directory') and config_parser.get('postgresql', 'backup_root_directory')) or env.backup_directory
     PostgreSQLConfig.backup_email_recipients = (config_parser.has_option('postgresql', 'backup_email_recipients') and config_parser.get('postgresql', 'backup_email_recipients')) or ''
-    PostgreSQLConfig.backup_retention_period_in_days = (config_parser.has_option('postgresql', 'backup_retention_period_in_days') and config_parser.get('postgresql', 'backup_retention_period_in_days')) or 120
+    PostgreSQLConfig.backup_retention_period_in_days = (config_parser.has_option('postgresql', 'backup_retention_period_in_days') and config_parser.get('postgresql', 'backup_retention_period_in_days')) or 7
     PostgreSQLConfig.backup_cron_m_h_dom_mon_dow = (config_parser.has_option('postgresql', 'backup_cron_m_h_dom_mon_dow') and config_parser.get('postgresql', 'backup_cron_m_h_dom_mon_dow')) or "00 2 * * *"
     PostgreSQLConfig.activate_dropbox_integration = (config_parser.has_option('postgresql', 'activate_dropbox_integration') and config_parser.get('postgresql', 'activate_dropbox_integration')) or False
 
     PostgreSQLConfig.backup_files_directory = os.path.join(PostgreSQLConfig.backup_root_directory, 'postgresql')
     PostgreSQLConfig.backup_scripts_directory = os.path.join(PostgreSQLConfig.backup_root_directory, 'scripts')
-    PostgreSQLConfig.backup_script_path = os.path.join(PostgreSQLConfig.backup_scripts_directory, 'muppy_backup_all_postgresql_databases.sh')
+    PostgreSQLConfig.backup_script_path = os.path.join(PostgreSQLConfig.backup_scripts_directory,
+                                                       'muppy_backup_all_postgresql_databases.sh')
 
     return PostgreSQLConfig
 
@@ -97,6 +135,27 @@ def backup(database, backup_file_name=None):
 
 
 @task
+def local_backup(database, backup_file_name=None):
+    """:database - Backup database and put backup file into muppy directory using a muppy generated backup name"""
+    env_backup = (env.user, env.password,)
+    env.user, env.password = env.adm_user, env.adm_password
+
+    if not database:
+        print red("ERROR: missing required database parameter.")
+        exit(128)
+
+    if not backup_file_name:
+        timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        hostname = get_local_hostname()
+        local('mkdir -p backups/%s' % hostname)
+        backup_file_name = os.path.join('backups/%s' % hostname, "%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
+
+    backup_command_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_user, backup_file_name, database,)
+    local(backup_command_line)
+
+    env.user, env.password = env_backup
+
+@task
 def local_restore(backup_file_path, jobs=4):
     """:backup_file_path - Restore a database using specified backup file path absolute or relative from muppy working directory."""
 
@@ -120,9 +179,10 @@ def local_restore(backup_file_path, jobs=4):
     except Exception:
         jobs_option = ''
 
-    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s" % ( env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
+    # Warning:
+    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s"\
+                           % (env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
     local(restore_command_line)
-
 
 
 @task
@@ -143,7 +203,8 @@ def restore(backup_file, jobs=4):
     (timestamp, database, host,) = backup_file.split('.')[0].split('__')
 
     if database in get_databases_list(embedded=True):
-        dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s" % (env.db_password, env.db_host, env.db_user, database,)
+        dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s"\
+                              % (env.db_password, env.db_host, env.db_user, database,)
         run(dropdb_command_line)
 
     try:
@@ -152,9 +213,10 @@ def restore(backup_file, jobs=4):
     except Exception:
         jobs_option = ''
 
-    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s" % ( env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
+    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s" \
+                           % (env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
     run(restore_command_line)
-    
+
     env.user, env.password = env_backup
     return
 
@@ -192,6 +254,7 @@ def get_backup_file(backup_file, local_path="backups/%(host)s/%(path)s"):
     env.user, env.password = env_backup
     return
 
+
 @task
 def put_backup_file(local_backup_file_path=None, force=False):
     """:backup_file[[,force]] - Upload <<backup_file>> to {{ppostgresql.backup_files_directory}}. Fail if local_backup_file does not exist or remote backup file exists unless force=True is specified."""
@@ -202,11 +265,14 @@ def put_backup_file(local_backup_file_path=None, force=False):
         print red("ERROR: missing required local_backup_file")
         exit(0)
 
-    remote_backup_file_path = os.path.join(env.postgresql.backup_files_directory, os.path.basename(local_backup_file_path))
+    remote_backup_file_path = os.path.join(env.postgresql.backup_files_directory,
+                                           os.path.basename(local_backup_file_path))
 
     if exists(remote_backup_file_path):
         if not force:
-            print red("ERROR: backup file '%s' already exists in remote server backup directory. use force=True to overwrite it." % os.path.basename(local_backup_file_path))
+            print red("ERROR: backup file '%s' already exists in "
+                      "remote server backup directory. use force=True "
+                      "to overwrite it." % os.path.basename(local_backup_file_path))
             exit(0)
         confirm = prompt("Are you sure you want to upload '%s' on server '%s'. Enter YES to confirm." % (os.path.basename(local_backup_file_path), get_hostname(),), default="no", validate="YES|no")
         if confirm != 'YES':
@@ -262,4 +328,14 @@ def install_backup_cron():
     env.password = env.adm_password
 
     # To debug cron, add a MAILTO=email@domain.ext in crontab
-    run('cat <(crontab -l) <(echo "%s %s") | crontab -' % (env.postgresql.backup_cron_m_h_dom_mon_dow, env.postgresql.backup_script_path), warn_only=True)
+    command_str = 'cat <(crontab -l) <(echo "%s %s") | crontab -'\
+                  % (env.postgresql.backup_cron_m_h_dom_mon_dow, env.postgresql.backup_script_path,)
+    run(command_str, warn_only=True)
+
+
+@task
+def generate_config_template():
+    """Generate a template [postgresql] section that you can copy paste into muppy config file."""
+    print TEMPLATE_CFG_SECTION
+
+#

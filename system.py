@@ -1,7 +1,7 @@
 from urlparse import urlparse
 from fabric.api import *
 from fabric.operations import *
-from fabric.contrib.files import exists
+from fabric.contrib.files import exists, append
 from fabric import colors
 import sys
 import string
@@ -32,7 +32,25 @@ TEMPLATE_CFG_SECTION = """
 # Default is:
 # locale = None
 # install = False
-# In that case locale is ignored whatever value it is.
+# In that case locale is unmodified whatever value it is.
+#
+#
+#
+# SSH keys
+#
+# List of SSH public keys to add as authorized for created users.
+# Ignored if empty. 
+# Required AWS EC2
+#
+# Examples
+# admin_ssh_keys =
+#    ssh-rsa AAAAdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd cinder@ello
+#    ssh-rsa AAAAB3NzaC1yc2EAAAADAsvvsvvdvbdvbdbvdghenlkhlklkhhkjllhkhlklkhlkhlkhklhkjkjljklllllllllllllllllllllllllllllllllllllllllllllllkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkl cinder@ella
+#
+#admin_ssh_keys =
+
+
+
 """
 
 
@@ -65,10 +83,16 @@ def parse_config(config_parser):
     if not config_parser.has_option('system', 'locale') and SystemConfig.install:
         print red("locale options is required in [security] section when install = True!!")
         sys.exit(1)
-
-    # will decompose in case we will be back on this
     raw_locale = config_parser.get('system', 'locale')
     SystemConfig.locale = raw_locale
+
+    # admin_ssh_keys
+    if config_parser.has_option('system', 'admin_ssh_keys'):
+        raw_admin_ssh_keys = config_parser.get('system', 'admin_ssh_keys')
+        raw_admin_ssh_keys = filter(None, raw_admin_ssh_keys.split('\n'))  # split on each line filtering empty ones
+        SystemConfig.admin_ssh_keys = raw_admin_ssh_keys
+    else:
+        SystemConfig.admin_ssh_keys = []
 
     return SystemConfig
 
@@ -105,18 +129,18 @@ def setup_locale(locale=None):
     env.user, env.password = env.root_user, env.root_password
 
     # We check locale is a validone
-    ret_val = sudo("locale-gen %s" % locale, quiet=True, warn_only=True)
+    ret_val = sudo("locale-gen %s" % locale, quiet=False, warn_only=True)
     if ret_val.failed:
         print colors.red("ERROR: Unable to generate locale '%s'." % locale)
         sys.exit(1)
 
     language = locale.split('.')[0]
-    ret_val = sudo('update-locale LANG="%s" LANGUAGE="%s" LC_ALL="%s" LC_CTYPE="%s"' % (locale, language, locale, locale,), quiet=True, warn_only=True)
+    ret_val = sudo('update-locale LANG="%s" LANGUAGE="%s" LC_ALL="%s" LC_CTYPE="%s"' % (locale, language, locale, locale,), quiet=False, warn_only=True)
     if ret_val.failed:
         print colors.red("ERROR: Unable to update-locale with '%s'." % locale)
         sys.exit(1)
 
-    ret_val = sudo('dpkg-reconfigure locales', quiet=True, warn_only=True)
+    ret_val = sudo('dpkg-reconfigure locales', quiet=False, warn_only=True)
     if ret_val.failed:
         print colors.red("ERROR: Unable to 'sudo dpkg-reconfigure locales'.")
         sys.exit(1)
@@ -179,8 +203,7 @@ def user_set_password(username, password):
     env.user = env.root_user
     env.password = env.root_password
     sudo("echo '%s:%s' > pw.tmp" % (username, password,), quiet=False)
-    sudo("sudo chpasswd < pw.tmp", quiet=False)
-    sudo("rm pw.tmp", quiet=True)
+    sudo("chpasswd < pw.tmp", quiet=False)
     (env.user, env.password,) = env_backup
 
 
@@ -202,6 +225,9 @@ def get_hostname():
 def user_create(username, password, groups="", system_user=False, quiet=False):
     """Create a user on remote system set hi to belongs to groups. If user exists reset his password and add him into the groups."""
     env_backup = (env.user, env.password)
+    
+    env.user = env.root_user
+    env.password = env.root_password
 
     # creat euser only it it does not exist
     if not user_search(username):
@@ -219,6 +245,12 @@ def user_create(username, password, groups="", system_user=False, quiet=False):
         if group_name not in actual_group_list:
             sudo('usermod -a -G %s %s' % (group_name, username,), quiet=quiet)
 
+    # We add admin ssh keys to user authorized keys
+    sudo("mkdir -p /home/%s/.ssh" % username, user=username)
+    for key in SystemConfig.admin_ssh_keys:
+        sudo("echo %s >> /home/%s/.ssh/authorized_keys" % (key, username,), user=username)
+        #append("/home/%s/.ssh/authorized_keys" % username, key)
+
     user_set_password(username, password)
 
     # Generate a ssh key for username if it does not exists
@@ -235,6 +267,7 @@ def user_create(username, password, groups="", system_user=False, quiet=False):
     get('/home/%s/.ssh/id_rsa.pub' % (username,), ssh_key_file_name)
     ssh_key_file = open(ssh_key_file_name)
     ssh_key_string = ssh_key_file.read()
+
 
     (env.user, env.password) = env_backup
     return

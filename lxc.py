@@ -152,7 +152,7 @@ def parse_config(config_parser):
         print red("admin_ssh_keys is required in [lxc] section of '%s' config file !!" % env.config_file)
         sys.exit(1)
 
-    # will decompose in case we will be back on this
+    # will decompose in case we have to get back on this
     raw_admin_ssh_keys = config_parser.get('lxc', 'admin_ssh_keys')
     raw_admin_ssh_keys = filter(None, raw_admin_ssh_keys.split('\n'))  # split on each line filtering empty ones
     LXCConfig.admin_ssh_keys = raw_admin_ssh_keys

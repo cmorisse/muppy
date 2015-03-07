@@ -62,6 +62,11 @@ def get_hostname():
     (env.user, env.password,) = env_backup 
     return hostname
 
+def get_local_hostname():
+    import socket
+    return socket.gethostname()
+    return hostname
+
 def upload_template(template_file_path, remote_path, context={}, use_sudo=False, limit_string='EOF', quiet=False):
     """
     Render and upload a template text file to a remote host.
