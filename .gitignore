@@ -1,7 +1,7 @@
-syntax: glob
-.DS_Store
-.git/
+.hg/
+.hgtags
 *.swp
+.DS_Store
 *.pyc
 .idea
 *.orig
@@ -41,3 +41,5 @@ draft/
 bash_scripts/
 
 docker/
+
+
