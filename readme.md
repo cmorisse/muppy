@@ -2,7 +2,7 @@
 
 A set of python fabric functions to make your OpenERP 7 Servers behave as muppets !
 
-Muppy is released with an MIT Licence.
+Muppy is under A-GPL 3 licence.
 
 Dont use muppy to install production servers. Muppy is intended only for Dev / tests servers.
 
