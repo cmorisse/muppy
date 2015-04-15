@@ -221,6 +221,7 @@ def show_current_revision():
     env.user = env.adm_user
     env.password = env.adm_password
     with cd(env.openerp.repository.path):
+        run(env.openerp.repository.get_show_current_tag_command_line())
         run(env.openerp.repository.get_show_current_rev_command_line())
 
 

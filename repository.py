@@ -93,6 +93,13 @@ class Repository(object):
         elif self.dvcs == 'hg':
             return 'hg sum'
 
+    def get_show_current_tag_command_line(self):
+        """Returns shell command to display info about repository current tag"""
+        if self.dvcs == 'git':
+            return 'git describe --always --tag'
+        elif self.dvcs == 'hg':
+            return 'echo Not implemented in mercurial'
+
     def get_fetch_command_line(self, source=''):
         """Returns a git fetch or hg pull command line"""
         if self.dvcs == 'git':
