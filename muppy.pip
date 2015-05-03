@@ -8,4 +8,6 @@ urwid==1.1.1
 wsgiref==0.1.2
 pyapi-gitlab==6.2.3
 ecdsa==0.10
+sphinx==1.3.1
+sphinx-autobuild==0.5.2
 pudb

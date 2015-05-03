@@ -1,0 +1,219 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Deploy with supervisor &mdash; muppy 3.0 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '3.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="muppy 3.0 documentation" href="index.html" />
+    <link rel="prev" title="Welcome to muppy’s documentation!" href="index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="index.html" title="Welcome to muppy’s documentation!"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">muppy 3.0 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="deploy-with-supervisor">
+<span id="id1"></span><h1>Deploy with supervisor<a class="headerlink" href="#deploy-with-supervisor" title="Permalink to this headline">¶</a></h1>
+<p>Supervisor deployment with muppy is designed this way:</p>
+<ul class="simple">
+<li>Supervisor deployment is activated by a <code class="docutils literal"><span class="pre">supervisor</span></code> directive in muppy config file</li>
+<li>Muppy installs the Linux distribution&#8217;s provided supervisor</li>
+<li>The appserver buildout is setup to generate a supervisor.conf file which contains only the <code class="docutils literal"><span class="pre">[program:...]</span></code> sections.</li>
+<li>Muppy passes generated .conf file to system supervisor by symlinking generated file in the included configuration folder (eg. /etc/supervisor/conf.d on debian)</li>
+<li>Muppy openerp.start and stop rely on supervisor</li>
+</ul>
+<div class="section" id="setup-the-appserver-to-generate-a-supervisor-config-file">
+<h2>Setup the appserver to generate a supervisor config file<a class="headerlink" href="#setup-the-appserver-to-generate-a-supervisor-config-file" title="Permalink to this headline">¶</a></h2>
+<p>In the Odoo appserver buildout.cfg, apply these changes:</p>
+<ul class="simple">
+<li>Add a supervisor section in buildout.cfg</li>
+<li>Specify the version of the required supervisor recipe</li>
+<li>Add a <code class="docutils literal"><span class="pre">supervisor</span></code> entry in buildout parts directive</li>
+</ul>
+<div class="section" id="add-a-supervisor-section">
+<h3>Add a supervisor section<a class="headerlink" href="#add-a-supervisor-section" title="Permalink to this headline">¶</a></h3>
+<p>Here is a commented example of a valid [supervisor] section.</p>
+<div class="highlight-ini"><div class="highlight"><pre><span class="k">[supervisor]</span>
+<span class="na">recipe</span> <span class="o">=</span> <span class="s">collective.recipe.supervisor</span>
+<span class="c1">#</span>
+<span class="c1"># We only want to generate the programs section so that we can symlink generated file</span>
+<span class="c1"># to /etc/supervisor/conf.d/</span>
+<span class="na">sections</span> <span class="o">=</span> <span class="s">services</span>
+
+<span class="c1">#</span>
+<span class="c1"># Following options are ignored due to sections settings above</span>
+<span class="c1">#http-socket = unix</span>
+<span class="c1">#file = ${buildout:directory}/var/supervisord.sock</span>
+<span class="c1"># port = 127.0.0.1:9001</span>
+<span class="c1">#supervisord-conf = ${buildout:directory}/etc/supervisord.conf</span>
+<span class="c1">#logfile = ${buildout:directory}/var/log/supervisord.log</span>
+<span class="c1">#pidfile = ${buildout:directory}/var/supervisord.pid</span>
+<span class="c1">#loglevel = info</span>
+
+<span class="c1">#</span>
+<span class="c1"># vars used to configure programs</span>
+<span class="na">logfile_openerp</span> <span class="o">=</span> <span class="s">${buildout:directory}/var/log/openerp-stdout.log</span>
+
+<span class="c1"># User owner of preocesses (supervisor default is to run as root which is impossible for odoo)</span>
+<span class="na">process_owner_user</span> <span class="o">=</span> <span class="s">admodoo</span>
+
+<span class="c1"># number of workers for multi process programs</span>
+<span class="na">openerp_workers</span> <span class="o">=</span> <span class="s">4</span>
+
+<span class="c1">#</span>
+<span class="c1"># openerp connector specifics</span>
+<span class="na">logfile_openerp_connector</span> <span class="o">=</span> <span class="s">${buildout:directory}/var/log/openerp-connector-stdout.log</span>
+<span class="c1"># number of connecto worker processes</span>
+<span class="na">connector_workers</span> <span class="o">=</span> <span class="s">2</span>
+
+<span class="c1"># Note: Last one is for</span>
+<span class="na">programs</span> <span class="o">=</span><span class="s"></span>
+<span class="s">    10 odoo_mono_mt (autostart=false) &quot;${buildout:directory}/bin/start_openerp&quot; [ --logfile &quot;${:logfile_openerp}&quot; --workers=0 ] ${buildout:directory} true ${:process_owner_user}</span>
+<span class="s">    10 odoo_multi_mt &quot;${buildout:directory}/bin/start_openerp&quot; [ --logfile &quot;${:logfile_openerp}&quot; --workers=${:openerp_workers}] ${buildout:directory} true ${:process_owner_user}</span>
+<span class="s">    10 odoo_worker_mt &quot;${buildout:directory}/bin/python_openerp&quot; [ &quot;${buildout:directory}/parts/connector/openerp-connector/connector/openerp-connector-worker&quot; --config=&quot;${buildout:directory}/etc/openerp.cfg&quot;  --logfile &quot;${:logfile_openerp_connector}&quot; --workers=${:connector_workers}] ${buildout:directory} true ${:process_owner_user}</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="specify-the-version-of-the-supervisor-recipe">
+<h3>Specify the version of the supervisor recipe<a class="headerlink" href="#specify-the-version-of-the-supervisor-recipe" title="Permalink to this headline">¶</a></h3>
+<p>Muppy depends on the version <strong>0.20.dev0</strong> of the collective.recipe.supervisor which is not available
+yet on Pypi. So we will install the recipe directly from github.
+For that we need to:</p>
+<ul class="simple">
+<li>add a find-links directives that points on github</li>
+<li>specify the version in the buildout.cfg</li>
+</ul>
+<div class="section" id="add-a-find-links-directives-that-points-on-github">
+<h4>Add a find-links directives that points on github<a class="headerlink" href="#add-a-find-links-directives-that-points-on-github" title="Permalink to this headline">¶</a></h4>
+<div class="highlight-ini"><div class="highlight"><pre><span class="na">find-links</span> <span class="o">=</span> <span class="s">http://github.com/collective/collective.recipe.supervisor/tarball/master#egg=collective.recipe.supervisor-0.20.dev0</span>
+</pre></div>
+</div>
+<p>Take a look at the syntax. In #egg=collective.recipe.supervisor-0.20.dev0 the egg name is after the <code class="docutils literal"><span class="pre">#</span></code> and
+the version is after the <code class="docutils literal"><span class="pre">-</span></code>.</p>
+</div>
+<div class="section" id="specify-the-version-in-the-buildout-cfg">
+<h4>Specify the version in the buildout.cfg<a class="headerlink" href="#specify-the-version-in-the-buildout-cfg" title="Permalink to this headline">¶</a></h4>
+<p>Simply adda line in the <code class="docutils literal"><span class="pre">[versions]</span></code> section</p>
+<div class="highlight-ini"><div class="highlight"><pre><span class="na">find-links</span> <span class="o">=</span> <span class="s">http://github.com/collective/collective.recipe.supervisor/tarball/master#egg=collective.recipe.supervisor-0.20.dev0</span>
+</pre></div>
+</div>
+<p>Take a look at the syntax. In #egg=collective.recipe.supervisor-0.20.dev0 the egg name is after the # and
+the version is after the -</p>
+</div>
+</div>
+<div class="section" id="add-a-supervisor-entry-in-buildout-parts-directive">
+<h3>Add a <code class="docutils literal"><span class="pre">supervisor</span></code> entry in buildout parts directive<a class="headerlink" href="#add-a-supervisor-entry-in-buildout-parts-directive" title="Permalink to this headline">¶</a></h3>
+<p>Don&#8217;t forget to reference your <code class="docutils literal"><span class="pre">[supervisor]</span></code> section in the <code class="docutils literal"><span class="pre">parts</span></code> directive of the <code class="docutils literal"><span class="pre">[buildout]</span></code> section as shown below.</p>
+<div class="highlight-ini"><div class="highlight"><pre>parts = openerp supervisor
+versions = versions
+...
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Deploy with supervisor</a><ul>
+<li><a class="reference internal" href="#setup-the-appserver-to-generate-a-supervisor-config-file">Setup the appserver to generate a supervisor config file</a><ul>
+<li><a class="reference internal" href="#add-a-supervisor-section">Add a supervisor section</a></li>
+<li><a class="reference internal" href="#specify-the-version-of-the-supervisor-recipe">Specify the version of the supervisor recipe</a><ul>
+<li><a class="reference internal" href="#add-a-find-links-directives-that-points-on-github">Add a find-links directives that points on github</a></li>
+<li><a class="reference internal" href="#specify-the-version-in-the-buildout-cfg">Specify the version in the buildout.cfg</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#add-a-supervisor-entry-in-buildout-parts-directive">Add a <code class="docutils literal"><span class="pre">supervisor</span></code> entry in buildout parts directive</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="index.html"
+                        title="previous chapter">Welcome to muppy&#8217;s documentation!</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/muppy_with_supervisor.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Cyril MORISSE.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.3.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.3</a>
+      
+      |
+      <a href="_sources/muppy_with_supervisor.txt"
+          rel="nofollow">Page source</a></li>
+    </div>
+
+    
+
+    
+  </body>
+</html>

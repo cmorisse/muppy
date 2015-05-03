@@ -19,7 +19,10 @@ def get_running_service():
     backup = env.user, env.password
     env.user, env.password = env.root_user, env.root_password
 
-    # identify wich server is running
+    # TODO: if supervisor then begin to check supervisor
+
+
+    # Identify which server is running
     raw_server = sudo("ps -e -o %p,%c | grep [o]pener | cut -d',' -f2", quiet=True)
     if raw_server.failed:
         print red("ERROR: failed to ps")
@@ -31,6 +34,7 @@ def get_running_service():
         else:
             running_service = 'openerp-server'
     else:
+        # TODO: test for supervisor using appserver_id
         running_service = None
 
     env.user, env.password = backup
