@@ -56,9 +56,13 @@
 <li>Supervisor deployment is activated by a <code class="docutils literal"><span class="pre">supervisor</span></code> directive in muppy config file</li>
 <li>Muppy installs the Linux distribution&#8217;s provided supervisor</li>
 <li>The appserver buildout is setup to generate a supervisor.conf file which contains only the <code class="docutils literal"><span class="pre">[program:...]</span></code> sections.</li>
-<li>Muppy passes generated .conf file to system supervisor by symlinking generated file in the included configuration folder (eg. /etc/supervisor/conf.d on debian)</li>
+<li>Muppy passes generated .conf file to system supervisor by symlinking generated file in the included configuration folder (eg. /etc/supervisor/conf.d on Ubuntu)</li>
 <li>Muppy openerp.start and stop rely on supervisor</li>
 </ul>
+<div class="section" id="activate-supervisor-deployment">
+<h2>Activate Supervisor deployment<a class="headerlink" href="#activate-supervisor-deployment" title="Permalink to this headline">¶</a></h2>
+<p>In the muppy config file, add a</p>
+</div>
 <div class="section" id="setup-the-appserver-to-generate-a-supervisor-config-file">
 <h2>Setup the appserver to generate a supervisor config file<a class="headerlink" href="#setup-the-appserver-to-generate-a-supervisor-config-file" title="Permalink to this headline">¶</a></h2>
 <p>In the Odoo appserver buildout.cfg, apply these changes:</p>
@@ -159,6 +163,7 @@ versions = versions
   <h3><a href="index.html">Table Of Contents</a></h3>
   <ul>
 <li><a class="reference internal" href="#">Deploy with supervisor</a><ul>
+<li><a class="reference internal" href="#activate-supervisor-deployment">Activate Supervisor deployment</a></li>
 <li><a class="reference internal" href="#setup-the-appserver-to-generate-a-supervisor-config-file">Setup the appserver to generate a supervisor config file</a><ul>
 <li><a class="reference internal" href="#add-a-supervisor-section">Add a supervisor section</a></li>
 <li><a class="reference internal" href="#specify-the-version-of-the-supervisor-recipe">Specify the version of the supervisor recipe</a><ul>

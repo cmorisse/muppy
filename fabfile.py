@@ -21,8 +21,9 @@ import openerp
 import security
 import system  # And no system is not a python module ; it's a muppy one
 import lxc
+import supervisor
 
-__version__ = '0.2.9'
+__version__ = '0.3'
 
 # TODO: Installation JasperReport Server
 
@@ -39,9 +40,13 @@ if not env.get('config_file', False):
 config_parser = ConfigParser.ConfigParser()
 config_parser.readfp(open(env.config_file))
 if not config_parser.has_option('env', 'muppy_version') or not __version__.startswith(config_parser.get('env', 'muppy_version')):
-    print red("ERROR: unsupported config_file version ; version 0.2 is required")
+    print red("ERROR: unsupported config_file version ; version '%s' is required." % __version__)
     exit(0)
 
+if config_parser.has_option('env', 'appserver_id'):
+    env.appserver_id = config_parser.get('env', 'appserver_id')
+else:
+    print red("ERROR: missing appserver_id required entry.")
 
 if config_parser.has_option('env', 'linux_distribution'):
     env.linux_distribution = config_parser.get('env', 'linux_distribution')
@@ -102,6 +107,10 @@ env.system = system.parse_config(config_parser)
 #
 # lxc
 env.lxc = lxc.parse_config(config_parser)
+
+#
+# supervisor
+env.supervisor = supervisor.parse_config(config_parser)
 
 
 # TODO: eval root, adm, pg, postgres, user and password from os.environ
@@ -288,6 +297,7 @@ def sys_install_openerp_prerequisites():
     sudo("apt-get install -y libyaml-dev")
     sudo("apt-get install -y bzr mercurial git")
     sudo("apt-get install -y curl htop vim tmux")
+    sudo("apt-get install -y supervisor")
     print green("OpenERP prerequisites installed.")
 
 def get_sshkey_name():

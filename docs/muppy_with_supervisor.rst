@@ -119,3 +119,11 @@ Don't forget to reference your ``[supervisor]`` section in the ``parts`` directi
     parts = openerp supervisor
     versions = versions
     ...
+
+
+Troubles checklist
+------------------
+
+- Appserver generated supervisor config file must be:
+  - named 'supervisord.conf'
+  - located in {{appserver_root}}/parts/supervisor/supervisord.conf

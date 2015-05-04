@@ -9,20 +9,36 @@ import string
 
 from muppy_utils import *
 import postgresql
+import supervisor
 
 """
-OpenERP Application Server related tasks
+Odoo Application Server related tasks
 """
 
+# TODO: Implement openerp.status (managed by ans process
+
+# TODO: must become running serviceS (Muppy must support several services)
 
 def get_running_service():
     backup = env.user, env.password
     env.user, env.password = env.root_user, env.root_password
 
-    # TODO: if supervisor then begin to check supervisor
+    if env.supervisor:
+        programs_status = supervisor.get_programs_status()
+        if programs_status:
+            running_programs = filter(lambda prog: programs_status[prog]=='RUNNING', programs_status)
+            env.user, env.password = backup
+            if not running_programs:
+                return None
 
+            if set(running_programs) == set(env.supervisor.managed_programs):
+                return 'supervisor'
 
-    # Identify which server is running
+            elif set(running_programs) < set(env.supervisor.managed_programs):
+                print red("ERROR: Not all supervisor managed programs are running !!!!")
+                return 'supervisor'
+
+    # Identify which init script server is running
     raw_server = sudo("ps -e -o %p,%c | grep [o]pener | cut -d',' -f2", quiet=True)
     if raw_server.failed:
         print red("ERROR: failed to ps")
@@ -34,7 +50,6 @@ def get_running_service():
         else:
             running_service = 'openerp-server'
     else:
-        # TODO: test for supervisor using appserver_id
         running_service = None
 
     env.user, env.password = backup
@@ -44,7 +59,7 @@ def get_running_service():
 @task
 def stop():
     """Stop running OpenERP service wether it is running with gunicorn or classic OpenERP."""
-    # This script has been designed to be really robust and accomodate buggy init scripts
+    # This script has been designed to be really robust and accommodate buggy init scripts
 
     WAIT_TIME = 5  # Delay to wait after a kill or stop
 
@@ -54,11 +69,25 @@ def stop():
 
     running_service = get_running_service()
 
+    if running_service == 'supervisor':
+        env.user, env.password = backup
+        print colors.blue("INFO: Server is running with 'supervisor'")
+        return_value = supervisor.stop_services()
+        print colors.green("Superviror managed Odoo services stopped.")
+        env.user, env.password = backup
+        return return_value
+
     if not running_service:
         print colors.magenta("WARNING: Did not find any running openerp service to stop !")
         env.user, env.password = backup
         return True
     print colors.blue("INFO: Running server is '%s'" % running_service)
+
+    if running_service == 'supervisor':
+        supervisor.stop_services()
+        env.user, env.password = backup
+        return True
+
 
     # we know which server is running, we can stop it
     print colors.blue("INFO: trying to use '/etc/init.d/%s stop' command." % running_service)
@@ -120,40 +149,55 @@ def stop():
 
 def get_active_service():
     """
-    :return: currently active inid.service: openerp-server | gunicorn-openerp
+    :return: currently active odoo process control: openerp-server | gunicorn-openerp | supervisor
     :rtype: str
     """
     backup = (env.user, env.password)
     env.user, env.password = env.root_user, env.root_password
 
+    ret_value = []
+
+    if supervisor.is_supervisor_active():
+        ret_value.append('supervisor')
+
     command_return = sudo("ls /etc/rc2.d/ | grep openerp-server", quiet=True, warn_only=True)
     if command_return.succeeded:
         env.user, env.password = backup
-        return 'openerp-server'
+        ret_value.append('openerp-server')
 
     command_return = sudo("ls /etc/rc2.d/ | grep unicorn-openerp", quiet=True, warn_only=True)
     if command_return.succeeded:
         env.user, env.password = backup
-        return 'gunicorn-openerp'
+        ret_value.append('gunicorn-openerp')
 
     env.user, env.password = backup
-    return ''
+    if not ret_value:
+        return ''
+    if len(ret_value)>1:
+        print red("ERROR: Several process control scripts are active: %s" % ret_value)
+        return None
+
+    return ret_value[0]
 
 
 @task
 def show_active_script():
     """Show the currenlty active init.d script"""
     active_script = get_active_service()
+
     if active_script:
-        print colors.green("Active init.d script is '/etc/init.d/%s'." % active_script)
+        if active_script == 'supervisor':
+            print colors.green("Odoo services are managed by supervisor.")
+        else:
+            print colors.green("Active init.d script is '/etc/init.d/%s'." % active_script)
     else:
-        print colors.green("No active init.d script.")
+        print colors.green("No active process control script (init scripts or supervisor).")
     return
 
 
 @task
 def set_active_script(flavor='openerp'):
-    """:flavor=openerp(default) | gunicorn - Removes currently active init.d script and set the new one."""
+    """:flavor=openerp(default) | gunicorn | supervisor - Deactivate currently active process control system and activate the new one."""
     backup = (env.user, env.password)
     env.user, env.password = env.root_user, env.root_password
 
@@ -162,19 +206,32 @@ def set_active_script(flavor='openerp'):
         requested_script = 'openerp-server'
     elif flavor == 'gunicorn':
         requested_script = 'gunicorn-openerp'
+    elif flavor == 'supervisor':
+        requested_script = 'supervisor'
     else:
         print colors.red("ERROR: unrecognized '%s' init.d script flavor." % flavor)
         sys.exit(1)
 
     if active_script == requested_script:
-        print colors.magenta("WARNING: '/etc/init.d/%s' is already the active script." % requested_script)
+        print colors.magenta("WARNING: '%s' is already the active script." % requested_script)
         sys.exit(0)
 
-    sudo("update-rc.d -f %s remove" % active_script, quiet=True)
-    print colors.green("INFO: '/etc/init.d/%s' removed from init scripts." % active_script)
+    # deactivate currently active script
+    if active_script == 'supervisor':
+        supervisor.deactivate_supervisor()
+        print colors.green("INFO: 'Odoo services removed from supervisor configuration.")
+    elif active_script:
+        sudo("update-rc.d -f %s remove" % active_script, quiet=True)
+        print colors.green("INFO: '/etc/init.d/%s' removed from init scripts." % active_script)
 
-    sudo("update-rc.d %s defaults" % requested_script, quiet=True)
-    print colors.green("'/etc/init.d/%s' is now the active init.d script." % requested_script)
+    # activate requested script
+    if requested_script == 'supervisor':
+        supervisor.activate_supervisor()
+        print colors.green("INFO: 'Odoo services are now managed by supervisor.")
+        print colors.magenta("WARNING: 'Odoo services in auto mode have restarted.")
+    else:
+        sudo("update-rc.d %s defaults" % requested_script, quiet=True)
+        print colors.green("'/etc/init.d/%s' is now the active init.d script." % requested_script)
 
     env.user, env.password = backup
     return
@@ -189,19 +246,29 @@ def start():
     running_service = get_running_service()
     if not running_service:
         active_service = get_active_service()
-        if active_service == 'openerp-server':
+        if active_service == 'supervisor':
+            print colors.blue("INFO: Server services are managed by 'supervisor'")
+            supervisor.start_services()
+            print green("Supervisor managed Odoo services started.")
+
+        elif active_service == 'openerp-server':
             print colors.blue("INFO: Currently active script is '/etc/init.d/openerp-server'")
             sudo('/etc/init.d/openerp-server start', pty=False, quiet=True)
             print green("OpenERP service 'openerp-server' started.")
+
         elif active_service == 'gunicorn-openerp':
             print colors.blue("INFO: Currently active script is '/etc/init.d/gunicorn-openerp'")
             sudo('/etc/init.d/gunicorn-openerp start', pty=False, quiet=True)
             print green("OpenERP service 'gunicorn-openerp' started.")
+
         else:
             print colors.red("ERROR: Don't know what to start as there is no init.d active script.  Use set_active_script to define one.")
             sys.exit(1)
     else:
-        print colors.magenta("WARNING: OpenERP '/etc/init.d/%s' not started as it's already running." % running_service)
+        if running_service == supervisor:
+            print colors.magenta("WARNING: Supervisor managed Odoo services are already running. Nothing done")
+        else:
+            print colors.magenta("WARNING: OpenERP '/etc/init.d/%s' not started as it's already running." % running_service)
 
     env.user, env.password = backup
     return

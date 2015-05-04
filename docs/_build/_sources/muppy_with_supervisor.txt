@@ -8,8 +8,15 @@ Supervisor deployment with muppy is designed this way:
 - Supervisor deployment is activated by a ``supervisor`` directive in muppy config file
 - Muppy installs the Linux distribution's provided supervisor
 - The appserver buildout is setup to generate a supervisor.conf file which contains only the ``[program:...]`` sections.
-- Muppy passes generated .conf file to system supervisor by symlinking generated file in the included configuration folder (eg. /etc/supervisor/conf.d on debian)
+- Muppy passes generated .conf file to system supervisor by symlinking generated file in the included configuration folder (eg. /etc/supervisor/conf.d on Ubuntu)
 - Muppy openerp.start and stop rely on supervisor
+
+Activate Supervisor deployment
+------------------------------
+
+In the muppy config file, add a
+
+
 
 
 Setup the appserver to generate a supervisor config file
