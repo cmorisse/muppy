@@ -52,7 +52,7 @@ def install():
     env_backup = (env.user, env.password,)
     env.user, env.password = env.root_user, env.root_password
 
-    sudo('apt-get update install supervisor')
+    sudo('apt-get install -y supervisor')
 
     (env.user, env.password,) = env_backup
     return

@@ -251,13 +251,14 @@ def sys_install_vmware_tools():
 # System related tasks
 #
 
+
 @task
 def get_system_version(format_for='human'):
     """Retrieve system version"""
     env_backup = (env.user, env.password,)
     # we use root_user as it is always defined in config even for lxc
     env.user, env.password = env.root_user, env.root_password
-    
+
     result = run("python -c \"import platform;print(platform.linux_distribution())\"", quiet=True)
     if result.failed:
         return None
@@ -265,12 +266,12 @@ def get_system_version(format_for='human'):
     if format_for == 'human':
         result_as_string = ",".join(eval(result))
         print(result_as_string)
-        (env.user, env.password,) = env_backup 
+        (env.user, env.password,) = env_backup
         return result_as_string
 
-
-    (env.user, env.password,) = env_backup 
+    (env.user, env.password,) = env_backup
     return eval(result)
+
 
 @task
 def sys_install_openerp_prerequisites():
@@ -278,6 +279,7 @@ def sys_install_openerp_prerequisites():
     env.user = env.root_user
     env.password = env.root_password
 
+    v = get_system_version()
 
     # TODO All of this must move to the repository install.sh
     # TODO: or add some logic to handle different versions behaviour
@@ -302,6 +304,7 @@ def sys_install_openerp_prerequisites():
 
 def get_sshkey_name():
     return 'muppy:%s@%s' % (env.adm_user, system.get_hostname(),)
+
 
 def download_ssh_key():
     # download ssh key

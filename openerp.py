@@ -88,7 +88,6 @@ def stop():
         env.user, env.password = backup
         return True
 
-
     # we know which server is running, we can stop it
     print colors.blue("INFO: trying to use '/etc/init.d/%s stop' command." % running_service)
     if running_service == 'gunicorn-openerp':
@@ -173,7 +172,8 @@ def get_active_service():
     env.user, env.password = backup
     if not ret_value:
         return ''
-    if len(ret_value)>1:
+
+    if len(ret_value) > 1:
         print red("ERROR: Several process control scripts are active: %s" % ret_value)
         return None
 
@@ -183,6 +183,9 @@ def get_active_service():
 @task
 def show_active_script():
     """Show the currenlty active init.d script"""
+    backup = (env.user, env.password)
+    env.user, env.password = env.root_user, env.root_password
+
     active_script = get_active_service()
 
     if active_script:
@@ -192,6 +195,8 @@ def show_active_script():
             print colors.green("Active init.d script is '/etc/init.d/%s'." % active_script)
     else:
         print colors.green("No active process control script (init scripts or supervisor).")
+
+    env.user, env.password = backup
     return
 
 
