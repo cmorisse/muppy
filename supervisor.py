@@ -60,7 +60,7 @@ def install():
 
 @task
 def generate_config_template():
-    """Generate a template [postgresql] section that you can copy paste into muppy config file."""
+    """Generate a template [supervisor] section that you can copy paste into muppy config file."""
     print TEMPLATE_CFG_SECTION
 
 def is_supervisor_active():
