@@ -232,8 +232,8 @@ def set_active_script(flavor='openerp'):
     # activate requested script
     if requested_script == 'supervisor':
         supervisor.activate_supervisor()
-        print colors.green("INFO: 'Odoo services are now managed by supervisor.")
-        print colors.magenta("WARNING: 'Odoo services in auto mode have restarted.")
+        print colors.green("INFO: Odoo services are now managed by supervisor.")
+        print colors.magenta("WARNING: Odoo services in 'auto' mode have restarted.")
     else:
         sudo("update-rc.d %s defaults" % requested_script, quiet=True)
         print colors.green("'/etc/init.d/%s' is now the active init.d script." % requested_script)

@@ -154,7 +154,7 @@ def activate_supervisor():
         print red("ERROR: configuration file '%' does not exist. Unable to activate supervisor.")
         sys.exit(1)
     dest = '/etc/supervisor/conf.d/odoo-%s.conf' % env.appserver_id
-    sudo('ln -s %s %s' %  (src, dest,))
+    sudo('ln -fs %s %s' %  (src, dest,))
     sudo('supervisorctl update')
     (env.user, env.password,) = env_backup
     return True
