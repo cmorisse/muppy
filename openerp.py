@@ -201,7 +201,7 @@ def show_active_script():
 
 
 @task
-def set_active_script(flavor='openerp'):
+def set_active_script(flavor='openerp',force='False'):
     """:flavor=openerp(default) | gunicorn | supervisor - Deactivate currently active process control system and activate the new one."""
     backup = (env.user, env.password)
     env.user, env.password = env.root_user, env.root_password
@@ -217,7 +217,7 @@ def set_active_script(flavor='openerp'):
         print colors.red("ERROR: unrecognized '%s' init.d script flavor." % flavor)
         sys.exit(1)
 
-    if active_script == requested_script:
+    if force=='False' and active_script == requested_script:
         print colors.magenta("WARNING: '%s' is already the active script." % requested_script)
         sys.exit(0)
 

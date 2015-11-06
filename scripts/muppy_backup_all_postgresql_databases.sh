@@ -84,4 +84,5 @@ done
 #
 if [[ -n $BACKUP_RETENTION_PERIOD_ON_LOCAL_SERVER ]] ; then
     find $BACKUP_PATH -type f -name "*pg_dump" -mtime +$BACKUP_RETENTION_PERIOD_ON_LOCAL_SERVER -exec rm -f {} \;
+    find $BACKUP_PATH -type f -name "*log" -mtime +$BACKUP_RETENTION_PERIOD_ON_LOCAL_SERVER -exec rm -f {} \;
 fi

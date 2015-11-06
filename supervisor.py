@@ -21,7 +21,7 @@ TEMPLATE_CFG_SECTION = """
 # [managed_programs] # (Required)
 # List of programs that must be running under normal operations. They are defined in appserver
 # buildout.cfg using collective.supervisor.recipe.
-# Look at: http://hithub.com/cmorisse/appserver-templatev8 for an example.
+# Look at: http://github.com/cmorisse/appserver-templatev8 for an example.
 # Replace {{supervisor_process_name}} with a list of supervisor 'process_name' separated with ','
 #
 managed_programs = {{supervisor_process_name}},
@@ -151,7 +151,7 @@ def activate_supervisor():
     # TODO: make this a parameter
     src = "%s/%s/parts/supervisor/supervisord.conf" % (env.customer_path, env.openerp.repository.destination_directory,)
     if not exists(src):
-        print red("ERROR: configuration file '%' does not exist. Unable to activate supervisor.")
+        print red("ERROR: configuration file '%s' does not exist. Unable to activate supervisor." % src)
         sys.exit(1)
     dest = '/etc/supervisor/conf.d/odoo-%s.conf' % env.appserver_id
     sudo('ln -fs %s %s' %  (src, dest,))
