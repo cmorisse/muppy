@@ -372,8 +372,8 @@ def check_refspec(refspec, embedded=False):
 
 
 @task
-def deploy_start(databases=None, new_refspec=None):
-    """:"db_name1;db_name2",refspec - Deploy version designed by <<refspec>> param and update <<databases>>."""
+def deploy_start(databases=None, new_refspec=None, launch_buildout='False'):
+    """:"db_name1;db_name2",refspec,launch_buildout='False' - Deploy version designed by <<refspec>> param and update <<databases>>. Add True after the refspec to force the buildout."""
     # if refspec is unspecifed will checkout latest version of branch master or default
     # if databases is unspecified, will update database designed by env.test_database_name.
     # NOTE: We do backup the postgres db but we don't restore it in case deploy file. You must
@@ -455,7 +455,7 @@ def deploy_start(databases=None, new_refspec=None):
             exit(1)
 
     # checkout AND buildout
-    checkout_revision(new_refspec)
+    checkout_revision(new_refspec, launch_buildout)
 
     # openerp/update all modules on specified database(s)
     lock_file_content = "\n[update_database_statuses]"
