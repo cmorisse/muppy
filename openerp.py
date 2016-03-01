@@ -590,3 +590,15 @@ def deploy_commit():
     print magenta("INFO: Note that deploy_commit leave backups files untouched.")
     print blue("INFO: deploy_commit finished.")
     sys.exit(0)
+
+
+@task
+def install_odoo9_html_prerquisites():
+    """To install nodejs, wkhtml2pdf"""
+    print "sudo apt-get install nodejs npm"
+    print "sudo npm install -g less less-plugin-clean-css"
+    print "wget http://download.gna.org/wkhtmltopdf/0.12/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb"
+    print "sudo apt-get install fontconfig"
+    print "sudo dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb"
+    print "sudo ln -s /usr/local/bin/lessc /usr/bin/lessc"
+    print "sudo ln -s /usr/bin/nodejs /usr/bin/node"

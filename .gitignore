@@ -25,6 +25,7 @@ downloads
 etc
 
 ; For virtualenv 
+py27
 bin
 lib
 .Python

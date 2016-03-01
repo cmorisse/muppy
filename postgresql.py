@@ -1,7 +1,7 @@
 from urlparse import urlparse
 from fabric.api import *
 from fabric.operations import *
-from fabric.contrib.files import exists
+from fabric.contrib.files import exists, append
 from fabric.colors import *
 import sys
 import string
@@ -14,6 +14,8 @@ PostgreSQL related tasks
 TEMPLATE_CFG_SECTION = """
 
 [postgresql]
+# Serveur Version (9.4 or default)
+#version = default
 #
 # Automated daily backup
 # Muppy contains a postgresql backup script that can be installed and setup in CRON
@@ -55,6 +57,7 @@ class PostgreSQLConfig:
 
 def parse_config(config_parser):
     # Automated daily backup options
+    PostgreSQLConfig.version = (config_parser.has_option('postgresql', 'version') and config_parser.get('postgresql', 'version')) or 'default'
     PostgreSQLConfig.backup_root_directory = (config_parser.has_option('postgresql', 'backup_root_directory') and config_parser.get('postgresql', 'backup_root_directory')) or env.backup_directory
     PostgreSQLConfig.backup_email_recipients = (config_parser.has_option('postgresql', 'backup_email_recipients') and config_parser.get('postgresql', 'backup_email_recipients')) or ''
     PostgreSQLConfig.backup_retention_period_in_days = (config_parser.has_option('postgresql', 'backup_retention_period_in_days') and config_parser.get('postgresql', 'backup_retention_period_in_days')) or 7
@@ -338,4 +341,44 @@ def generate_config_template():
     """Generate a template [postgresql] section that you can copy paste into muppy config file."""
     print TEMPLATE_CFG_SECTION
 
+@task
+def install(version="default"):
+    """:[version=9.4] Install postgresql specified version or the version defined in config file."""
+    env_backup = (env.user, env.password,)
+    env.user, env.password = env.root_user, env.root_password
+
+    if version == 'default':
+        version = PostgreSQLConfig.version
+
+    if version == '9.4':
+        if not exists('/etc/apt/sources.list.d/pgdg.list', use_sudo=True):
+            append('/etc/apt/sources.list.d/pgdg.list',
+                   'deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg main',
+                   use_sudo=True)
+            sudo("wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add - ")
+            sudo('sudo apt-get update --fix-missing')
+
+        sudo('apt-get install -y postgresql-9.4')
+    else:
+        sudo('sudo apt-get update --fix-missing')
+        sudo('apt-get install -y postgresql')
+
+    env.user, env.password = env_backup
+    print green("PosgreSQL server and client installed.")
+
+
+# Install postgresql 9.4 on Ubuntu
+# voir http://www.postgresql.org/download/linux/ubuntu/
+# Sur trusty
+# AJouter la ligne suivante dans le fichier: /etc/apt/sources.list.d/pgdg.list
+# deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg main
 #
+#wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+#sudo apt-get update
+#apt-get install postgresql-9.4
+
+
+
+
+
+
