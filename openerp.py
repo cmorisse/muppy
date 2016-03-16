@@ -21,7 +21,7 @@ Odoo Application Server related tasks
 
 def get_running_service():
     backup = env.user, env.password
-    env.user, env.password = env.root_user, env.root_password
+    env.user, env.password = env.adm_user, env.adm_password
 
     if env.supervisor:
         programs_status = supervisor.get_programs_status()
@@ -65,7 +65,7 @@ def stop():
 
     # We switch to root_user, but we preserve active user
     backup = env.user, env.password
-    env.user, env.password = env.root_user, env.root_password
+    env.user, env.password = env.adm_user, env.adm_password
 
     running_service = get_running_service()
 
@@ -73,7 +73,7 @@ def stop():
         env.user, env.password = backup
         print colors.blue("INFO: Server is running with 'supervisor'")
         return_value = supervisor.stop_services()
-        print colors.green("Superviror managed Odoo services stopped.")
+        print colors.green("Supervisor managed Odoo services stopped.")
         env.user, env.password = backup
         return return_value
 
@@ -152,7 +152,7 @@ def get_active_service():
     :rtype: str
     """
     backup = (env.user, env.password)
-    env.user, env.password = env.root_user, env.root_password
+    env.user, env.password = env.adm_user, env.adm_password
 
     ret_value = []
 
@@ -184,7 +184,7 @@ def get_active_service():
 def show_active_script():
     """Show the currenlty active init.d script"""
     backup = (env.user, env.password)
-    env.user, env.password = env.root_user, env.root_password
+    env.user, env.password = env.adm_user, env.adm_password
 
     active_script = get_active_service()
 
@@ -201,7 +201,7 @@ def show_active_script():
 
 
 @task
-def set_active_script(flavor='openerp',force='False'):
+def set_active_script(flavor='openerp', force='False'):
     """:flavor=openerp(default) | gunicorn | supervisor - Deactivate currently active process control system and activate the new one."""
     backup = (env.user, env.password)
     env.user, env.password = env.root_user, env.root_password
@@ -246,7 +246,7 @@ def set_active_script(flavor='openerp',force='False'):
 def start():
     """Start the active OpenERP init.d service"""
     backup = (env.user, env.password)
-    env.user, env.password = env.root_user, env.root_password
+    env.user, env.password = env.adm_user, env.adm_password
 
     running_service = get_running_service()
     if not running_service:

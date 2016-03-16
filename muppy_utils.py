@@ -55,7 +55,7 @@ def user_exists(user_name):
 
 def get_hostname():
     env_backup = (env.user, env.password,)
-    env.user, env.password = env.root_user, env.root_password
+    env.user, env.password = env.adm_user, env.adm_password
 
     hostname = run("hostname", warn_only=True, quiet=True)
 

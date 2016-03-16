@@ -89,7 +89,7 @@ def stop_services():
     :rtype:
     """
     env_backup = (env.user, env.password,)
-    env.user, env.password = env.root_user, env.root_password
+    env.user, env.password = env.adm_user, env.adm_password
     if env.supervisor:
         command_return = sudo('supervisorctl stop %s' % (' '.join(env.supervisor.managed_programs),),
                               quiet=True, warn_only=True)
@@ -126,7 +126,7 @@ def start_services():
     :rtype:
     """
     env_backup = (env.user, env.password,)
-    env.user, env.password = env.root_user, env.root_password
+    env.user, env.password = env.adm_user, env.adm_password
     if env.supervisor:
         command_return = sudo('supervisorctl start %s' % (' '.join(env.supervisor.managed_programs),),
                               quiet=True, warn_only=True)
