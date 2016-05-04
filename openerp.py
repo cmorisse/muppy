@@ -39,7 +39,7 @@ def get_running_service():
                 return 'supervisor'
 
     # Identify which init script server is running
-    raw_server = sudo("ps -e -o %p,%c | grep [o]pener | cut -d',' -f2", quiet=True)
+    raw_server =run("ps -e -o %p,%c | grep [o]pener | cut -d',' -f2", quiet=True)
     if raw_server.failed:
         print red("ERROR: failed to ps")
         sys.exit(1)
