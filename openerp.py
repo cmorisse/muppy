@@ -602,3 +602,11 @@ def install_odoo9_html_prerquisites():
     print "sudo dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb"
     print "sudo ln -s /usr/local/bin/lessc /usr/bin/lessc"
     print "sudo ln -s /usr/bin/nodejs /usr/bin/node"
+
+
+
+@task
+def navigate():
+    """Open Odoo home page in default browser [Experimental, MacOS Only]"""
+    #import pudb ; pudb.set_trace()
+    local('open http://%s:8069/' % env.hosts[0])
