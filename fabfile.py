@@ -367,7 +367,7 @@ def sys_create_openerp_user():
         # We always overwrite the file
         # Manual command:
         # sudo sh -c "echo \"admmathon      ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp\" > /etc/sudoers.d/muppy"
-        sudo('sh -c \'echo "%s      ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp,usr/bin/supervisorctl" > /etc/sudoers.d/muppy\'' % env.adm_user)
+        sudo('sh -c \'echo "%s      ALL = /etc/init.d/openerp-server,/etc/init.d/gunicorn-openerp,/usr/bin/supervisorctl" > /etc/sudoers.d/muppy\'' % env.adm_user)
         sudo("chmod 0440 /etc/sudoers.d/muppy")
 
 
