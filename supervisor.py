@@ -71,7 +71,7 @@ def is_supervisor_active():
     """
     if env.supervisor:
         # We use avail as status will return nothing until programs have been started
-        command_return = sudo('supervisorctl avail', quiet=True, warn_only=True)
+        command_return = sudo('supervisorctl avail', shell=False, quiet=True, warn_only=True)
         if command_return.succeeded:
             supervisor_list = [filter(None, e.split(' ')) for e in command_return.split('\r\n')]
             if supervisor_list[0]:
@@ -109,7 +109,7 @@ def get_programs_status():
     ret_dict = None
 
     if env.supervisor:
-        command_return = sudo('supervisorctl status', quiet=True, warn_only=True)
+        command_return = sudo('supervisorctl status', shell=False, quiet=True, warn_only=True)
         if command_return.succeeded:
             supervisor_list = [filter(None, e.split(' ')) for e in command_return.split('\r\n')]
             if supervisor_list[0]:
@@ -129,7 +129,7 @@ def start_services():
     env.user, env.password = env.adm_user, env.adm_password
     if env.supervisor:
         command_return = sudo('supervisorctl start %s' % (' '.join(env.supervisor.managed_programs),),
-                              quiet=True, warn_only=True)
+                              shell=False, quiet=True, warn_only=True)
         if command_return.succeeded:
             (env.user, env.password,) = env_backup
             return True
