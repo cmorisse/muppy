@@ -202,7 +202,7 @@ def pg_create_openerp_user(pg_user=env.db_user, pg_password=env.db_password):
 
 @task
 def pg_allow_remote_access_for_EVERYONE(version='9.3'):
-    """:[[version=0.3]] - Configure Postgres to allow remote network connection from any host. WARNING High Security Risk"""
+    """:[[version=9.3]] - Configure Postgres to allow remote network connection from any host. WARNING High Security Risk"""
     env.user = env.root_user
     env.password = env.root_password
 
