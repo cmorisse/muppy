@@ -290,15 +290,20 @@ def sys_install_openerp_prerequisites():
 
     sudo("easy_install virtualenv==1.11.6")
 
-    sudo("apt-get install -y python-dev libz-dev")
+    sudo("apt-get install -y python-dev libz-dev gcc")
     sudo("apt-get install -y libxml2-dev libxslt1-dev")
     sudo("apt-get install -y libpq-dev")
     sudo("apt-get install -y libldap2-dev libsasl2-dev")
-    sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev liblcms1-dev libwebp-dev libtiff-dev")
+    sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev") 
+    # TODO: Rework why do I need it
+    #sudo("apt-get liblcms1-dev")
+    sudo("apt-get install -y libwebp5  libwebp-dev")  
+    sudo("apt-get install -y libtiff-dev")  
     sudo("apt-get install -y libyaml-dev")
     sudo("apt-get install -y bzr mercurial git")
     sudo("apt-get install -y curl htop vim tmux")
     sudo("apt-get install -y supervisor")
+
     print green("OpenERP prerequisites installed.")
 
 def get_sshkey_name():

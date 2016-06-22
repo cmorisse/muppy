@@ -58,6 +58,11 @@ class SystemConfig:
     install = False
     locale = None
 
+SUPPORTED_VERSIONS = {
+    'ubuntu': ('12.04', '14.04', '16.04',),
+    'debian': ('7',),
+}
+
 
 def parse_config(config_parser):
     """
@@ -94,24 +99,81 @@ def parse_config(config_parser):
     else:
         SystemConfig.admin_ssh_keys = []
 
+    # distribution
+    if config_parser.has_option('system', 'distribution'):
+        raw_distrib = config_parser.get('system', 'distribution')
+        SystemConfig.distribution = raw_distrib
+        if raw_distrib not in ('ubuntu', 'debian',):
+            print red("Unsupported Linux Distribution: %s" % raw_distrib)
+            sys.exit(1)
+    else:
+        SystemConfig.distribution = 'ubuntu'
+
+
+    # version
+    if config_parser.has_option('system', 'version'):
+        raw_version = config_parser.get('system', 'version')
+        SystemConfig.version = raw_version
+        if raw_version not in SUPPORTED_VERSIONS[SystemConfig.distribution]:
+            print red("Unsupported version: %s for distrib: %s" % (raw_version, raw_distrib,))
+            sys.exit(1)
+    else:
+        SystemConfig.version = '14.04'
+
     return SystemConfig
 
 
 @task
-def prerequisites():
+def install_system_prerequisites():
     """Install System Prerequisites."""
     backup_user, backup_password = env.user, env.password
     env.user, env.password = env.root_user, env.root_password
-
-    runner = sudo if env.linux_distribution == 'ubuntu' else run
-    
-    runner('apt-get update --fix-missing')
-    runner('apt-get install -y curl vim htop python tmux git mercurial bzr')
-    runner('apt-get install -y sudo')
+   
+    sudo('apt-get update --fix-missing')
+    sudo("apt-get install -y curl htop vim tmux")
+    sudo("apt-get install -y bzr mercurial git")
+    sudo("apt-get install -y python-dev libz-dev gcc")
+    sudo("apt-get install -y libxml2-dev libxslt1-dev")
+    sudo("apt-get install -y libpq-dev")
+    sudo("apt-get install -y libldap2-dev libsasl2-dev")
+    sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev") 
+    # TODO: Rework why do I need it
+    #sudo("apt-get liblcms1-dev")
+    sudo("apt-get install -y libwebp5  libwebp-dev")  
+    sudo("apt-get install -y libtiff-dev")  
+    sudo("apt-get install -y libyaml-dev")
 
     print colors.green("System prerequisites installed.")
     env.user, env.password = backup_user, backup_password
     return
+
+
+@task
+def install_openerp_prerequisites():
+    """Install all ubuntu packages required for OpenERP Server (run as root_user)"""
+    env.user = env.root_user
+    env.password = env.root_password
+
+    v = get_system_version()
+    if env.system.version == '16.04':
+        sudo('apt install virtualenv')
+    else:
+
+        # TODO All of this must move to the repository install.sh
+        # TODO: or add some logic to handle different versions behaviour
+        #sudo('wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py')
+        sudo('curl https://bootstrap.pypa.io/ez_setup.py -o ez_setup.py')
+
+        sudo('python ez_setup.py')
+        sudo('rm ez_setup.py')
+
+        sudo("easy_install virtualenv==1.11.6")
+
+
+    print green("OpenERP prerequisites installed.")
+
+
+
 
 
 @task

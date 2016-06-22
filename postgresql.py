@@ -343,7 +343,7 @@ def generate_config_template():
 
 @task
 def install(version="default"):
-    """:[version=9.4] Install postgresql specified version or the version defined in config file."""
+    """:[version=9.3] Install postgresql specified version or the version defined in config file."""
     env_backup = (env.user, env.password,)
     env.user, env.password = env.root_user, env.root_password
 
@@ -359,6 +359,19 @@ def install(version="default"):
             sudo('sudo apt-get update --fix-missing')
 
         sudo('apt-get install -y postgresql-9.4')
+    
+    elif version == '9.5':
+        if env.system.distribution == 'ubuntu':
+            if env.system.version == '16.04':
+                sudo('sudo apt-get update --fix-missing')                
+                sudo('apt-get install -y postgresql-9.5')
+            
+            elif env.system.version == '14.04':
+                print red("PostgreSQL 9.5 installation on Ubuntu '%s' not implemented. Installation aborted." % env.system.version)
+                exit(128)
+        else:
+            print red("Dont't know how to install PostgreSQL on '%s'. Installation aborted.")
+            exit(128)
     else:
         sudo('sudo apt-get update --fix-missing')
         sudo('apt-get install -y postgresql')
