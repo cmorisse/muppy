@@ -372,7 +372,7 @@ def check_refspec(refspec, embedded=False):
 
 
 @task
-def deploy_start(databases=None, new_refspec=None, launch_buildout='False'):
+def deploy_start(databases=None, new_refspec=None, launch_buildout='True'):
     """:"db_name1;db_name2",refspec,launch_buildout='False' - Deploy version designed by <<refspec>> param and update <<databases>>. Add True after the refspec to force the buildout."""
     # if refspec is unspecifed will checkout latest version of branch master or default
     # if databases is unspecified, will update database designed by env.test_database_name.
