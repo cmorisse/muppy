@@ -594,16 +594,14 @@ def deploy_commit():
 
 @task
 def install_odoo9_html_prerquisites():
-    """To install nodejs, wkhtml2pdf"""
-    print "sudo apt-get install nodejs npm"
-    print "sudo npm install -g less less-plugin-clean-css"
-    print "wget http://download.gna.org/wkhtmltopdf/0.12/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb"
-    print "sudo apt-get install fontconfig"
-    print "sudo dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb"
-    print "sudo ln -s /usr/local/bin/lessc /usr/bin/lessc"
-    print "sudo ln -s /usr/bin/nodejs /usr/bin/node"
-
-
+    """To install nodejs, wkhtml2pdf (Experimental!!!)"""
+    sudo('apt-get install -y nodejs npm')
+    sudo('npm install -g less less-plugin-clean-css')
+    sudo('wget http://download.gna.org/wkhtmltopdf/0.12/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb')
+    sudo('apt-get install -y fontconfig libxrender1')
+    sudo('dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb')
+    sudo('ln -s /usr/local/bin/lessc /usr/bin/lessc')
+    sudo('ln -s /usr/bin/nodejs /usr/bin/node')
 
 @task
 def navigate():
