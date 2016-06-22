@@ -225,7 +225,8 @@ def set_active_script(flavor='openerp', force='False'):
     if active_script == 'supervisor':
         supervisor.deactivate_supervisor()
         print colors.green("INFO: 'Odoo services removed from supervisor configuration.")
-    elif active_script:
+
+    if active_script == 'openerp':
         sudo("update-rc.d -f %s remove" % active_script, quiet=True)
         print colors.green("INFO: '/etc/init.d/%s' removed from init scripts." % active_script)
 

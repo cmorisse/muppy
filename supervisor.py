@@ -147,6 +147,11 @@ def activate_supervisor():
     env_backup = (env.user, env.password,)
     env.user, env.password = env.root_user, env.root_password
 
+    # launch supervisor daemon
+    if env.system.distribution == 'ubuntu' and env.system.version == '16.04':
+        print blue("Launching supervisor daemon..")
+        sudo('/etc/init.d/supervisor start')
+
     # For ubuntu
     # TODO: make this a parameter
     src = "%s/%s/parts/supervisor/supervisord.conf" % (env.customer_path, env.openerp.repository.destination_directory,)
