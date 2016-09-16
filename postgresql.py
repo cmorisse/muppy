@@ -216,7 +216,7 @@ def restore(backup_file, jobs=4):
     except Exception:
         jobs_option = ''
 
-    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s" \
+    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s --no-owner %s --create -d postgres %s" \
                            % (env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
     run(restore_command_line)
 
@@ -281,7 +281,8 @@ def put_backup_file(local_backup_file_path=None, force=False):
         if confirm != 'YES':
             print red("Upload aborted ; remote file untouched.")
             sys.exit(126)
-
+    print "local_backup_file_path=%s" % local_backup_file_path
+    print "remote_backup_file_path=%s" % remote_backup_file_path
     put(local_backup_file_path, remote_backup_file_path)
 
     env.user, env.password = env_backup

@@ -149,7 +149,7 @@ def stop():
 def get_active_service():
     """
     :return: currently active odoo process control: openerp-server | gunicorn-openerp | supervisor
-    :rtype: str
+    :rtype: list:str
     """
     backup = (env.user, env.password)
     env.user, env.password = env.adm_user, env.adm_password
@@ -173,11 +173,7 @@ def get_active_service():
     if not ret_value:
         return ''
 
-    if len(ret_value) > 1:
-        print red("ERROR: Several process control scripts are active: %s" % ret_value)
-        return None
-
-    return ret_value[0]
+    return ret_value 
 
 
 @task
@@ -188,11 +184,16 @@ def show_active_script():
 
     active_script = get_active_service()
 
+    if len(active_script) > 1:
+        print red("ERROR: Several process control scripts are active:")
+
     if active_script:
-        if active_script == 'supervisor':
+        if 'supervisor' in active_script:
             print colors.green("Odoo services are managed by supervisor.")
-        else:
-            print colors.green("Active init.d script is '/etc/init.d/%s'." % active_script)
+        if 'openerp-server' in active_script:
+            print colors.green("init.d script '/etc/init.d/openerp-server' is active.")
+        if 'gunicorn-openerp' in active_script:
+            print colors.green("init.d script '/etc/init.d/gunicorn-openerp' is active.")
     else:
         print colors.green("No active process control script (init scripts or supervisor).")
 
@@ -221,14 +222,18 @@ def set_active_script(flavor='openerp', force='False'):
         print colors.magenta("WARNING: '%s' is already the active script." % requested_script)
         sys.exit(0)
 
-    # deactivate currently active script
-    if active_script == 'supervisor':
+    # deactivate currently active scripts
+    if 'supervisor' in active_script:
         supervisor.deactivate_supervisor()
-        print colors.green("INFO: 'Odoo services removed from supervisor configuration.")
+        print colors.green("INFO: Odoo services removed from supervisor configuration.")
 
-    if active_script == 'openerp':
-        sudo("update-rc.d -f %s remove" % active_script, quiet=True)
-        print colors.green("INFO: '/etc/init.d/%s' removed from init scripts." % active_script)
+    if 'openerp-server' in active_script:
+        sudo("update-rc.d -f %s re@move" % 'openerp-server', quiet=True)
+        print colors.green("INFO: '/etc/init.d/%s' removed from init scripts." % 'openerp-server')
+
+    if 'gunicorn-openerp' in active_script:
+        sudo("update-rc.d -f %s remove" % 'gunicorn-openerp', quiet=True)
+        print colors.green("INFO: '/etc/init.d/%s' removed from init scripts." % 'gunicorn-openerp')
 
     # activate requested script
     if requested_script == 'supervisor':
@@ -251,7 +256,13 @@ def start():
 
     running_service = get_running_service()
     if not running_service:
-        active_service = get_active_service()
+        active_services = get_active_service()
+        if len(active_services) > 1:
+            print red("ERROR: Unable to start Odoo as several process control scripts are active.")
+            sys.exit(1)
+        else:
+            active_service = active_services[0]
+
         if active_service == 'supervisor':
             print colors.blue("INFO: Server services are managed by 'supervisor'")
             supervisor.start_services()
@@ -594,15 +605,18 @@ def deploy_commit():
 
 
 @task
-def install_odoo9_html_prerquisites():
+def install_odoo9_html_prerequisites():
     """To install nodejs, wkhtml2pdf (Experimental!!!)"""
+    env.user = env.root_user
+    env.password = env.root_password
+    
     sudo('apt-get install -y nodejs npm')
     sudo('npm install -g less less-plugin-clean-css')
     sudo('wget http://download.gna.org/wkhtmltopdf/0.12/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb')
-    sudo('apt-get install -y fontconfig libxrender1')
+    sudo('apt-get install -y fontconfig libxrender1 libjpeg-turbo8')
     sudo('dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb')
     sudo('ln -s /usr/local/bin/lessc /usr/bin/lessc')
-    sudo('ln -s /usr/bin/nodejs /usr/bin/node')
+    sudo('node')
 
 @task
 def navigate():

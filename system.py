@@ -124,7 +124,7 @@ def parse_config(config_parser):
 
 
 @task
-def install_system_prerequisites():
+def install_prerequisites():
     """Install System Prerequisites."""
     backup_user, backup_password = env.user, env.password
     env.user, env.password = env.root_user, env.root_password
@@ -154,12 +154,12 @@ def install_openerp_prerequisites():
     env.user = env.root_user
     env.password = env.root_password
 
-    v = get_system_version()
+    v = get_version()
     if env.system.version == '16.04':
-        sudo('apt install virtualenv')
+        sudo('apt install -y virtualenv')
     else:
 
-        # TODO All of this must move to the repository install.sh
+        # TODO All of this must move to the repository's install.sh
         # TODO: or add some logic to handle different versions behaviour
         #sudo('wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py')
         sudo('curl https://bootstrap.pypa.io/ez_setup.py -o ez_setup.py')
@@ -171,10 +171,6 @@ def install_openerp_prerequisites():
 
 
     print green("OpenERP prerequisites installed.")
-
-
-
-
 
 @task
 def setup_locale(locale=None):
@@ -202,9 +198,9 @@ def setup_locale(locale=None):
         print colors.red("ERROR: Unable to update-locale with '%s'." % locale)
         sys.exit(1)
 
-    ret_val = sudo('dpkg-reconfigure locales', quiet=False, warn_only=True)
+    ret_val = sudo('dpkg-reconfigure -f noninteractive locales', quiet=False, warn_only=True)
     if ret_val.failed:
-        print colors.red("ERROR: Unable to 'sudo dpkg-reconfigure locales'.")
+        print colors.red("ERROR: Unable to 'sudo dpkg-reconfigure -f noninteractive locales'.")
         sys.exit(1)
 
     print colors.green("Locale '%s' configured." % locale)
@@ -285,7 +281,7 @@ def get_hostname():
 
 @task
 def user_create(username, password, groups="", system_user=False, quiet=False):
-    """Create a user on remote system set hi to belongs to groups. If user exists reset his password and add him into the groups."""
+    """:"username","password","group_1;gr2" Create a user belonging to groups. If user exists reset his password and add him into the groups."""
     env_backup = (env.user, env.password)
     
     env.user = env.root_user
@@ -365,4 +361,24 @@ def user_set_ssh_authorized_keys(username, password, ssh_keys, quiet=False):
         run("echo '%s' >> ~/.ssh/authorized_keys" % ssh_key, quiet=quiet)
     (env.user, env.password) = env_backup
     return True
+
+@task
+def get_version(format_for='human'):
+    """Retrieve system version"""
+    env_backup = (env.user, env.password,)
+    # we use root_user as it is always defined in config even for lxc
+    env.user, env.password = env.root_user, env.root_password
+
+    result = run("python -c \"import platform;print(platform.linux_distribution())\"", quiet=True)
+    if result.failed:
+        return None
+
+    if format_for == 'human':
+        result_as_string = ",".join(eval(result))
+        print(result_as_string)
+        (env.user, env.password,) = env_backup
+        return result_as_string
+
+    (env.user, env.password,) = env_backup
+    return eval(result)
 

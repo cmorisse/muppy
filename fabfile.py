@@ -252,33 +252,12 @@ def sys_install_vmware_tools():
 
 
 @task
-def get_system_version(format_for='human'):
-    """Retrieve system version"""
-    env_backup = (env.user, env.password,)
-    # we use root_user as it is always defined in config even for lxc
-    env.user, env.password = env.root_user, env.root_password
-
-    result = run("python -c \"import platform;print(platform.linux_distribution())\"", quiet=True)
-    if result.failed:
-        return None
-
-    if format_for == 'human':
-        result_as_string = ",".join(eval(result))
-        print(result_as_string)
-        (env.user, env.password,) = env_backup
-        return result_as_string
-
-    (env.user, env.password,) = env_backup
-    return eval(result)
-
-
-@task
 def sys_install_openerp_prerequisites():
     """Install all ubuntu packages required for OpenERP Server (run as root_user)"""
     env.user = env.root_user
     env.password = env.root_password
 
-    v = get_system_version()
+    v = system.get_version()
 
     # TODO All of this must move to the repository install.sh
     # TODO: or add some logic to handle different versions behaviour
@@ -602,12 +581,10 @@ def install_openerp_application_server():
         print colors.red("ERROR: OpenERP configuration missing. Installation aborted.")
         sys.exit(1)
     
-    system.prerequisites()
-
     if env.system.install:
         system.setup_locale()
 
-    sys_install_openerp_prerequisites()
+    system.install_prerequisites()
     
     sys_create_openerp_user()
     
@@ -641,7 +618,8 @@ def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True
     phase5 = eval(phase5)
     phase6 = eval(phase6)
 
-    system.prerequisites()
+    system.install_prerequisites()    
+
 
     # Install locale !
     if phase0:
@@ -655,7 +633,7 @@ def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True
 
     # Install System packages required for OpenERP
     if phase2:
-        sys_install_openerp_prerequisites()
+        system.install_openerp_prerequisites()    
 
     # Create OpenERP admin user
     if phase3:
