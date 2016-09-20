@@ -159,8 +159,8 @@ def local_backup(database, backup_file_name=None):
     env.user, env.password = env_backup
 
 @task
-def local_restore(backup_file_path, jobs=4):
-    """:backup_file_path - Restore a database using specified backup file path absolute or relative from muppy working directory."""
+def local_restore(backup_file_path, new_database_name=None, jobs=4):
+    """:backup_file_path,[new_database_name] - Restore a database using specified backup file path absolute or relative from muppy working directory."""
 
     if not backup_file_path:
         print red("ERROR: missing required backup_file parameter.")
@@ -172,10 +172,16 @@ def local_restore(backup_file_path, jobs=4):
 
     (timestamp, database, host,) = os.path.basename(backup_file_path).split('.')[0].split('__')
 
+    # use new database name if specified
+    database = new_database_name or database
+
     if database in local_get_databases_list():
         dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s" % (env.db_password, env.db_host, env.db_user, database,)
         local(dropdb_command_line)
 
+    createdb_command_line = "export PGPASSWORD='%s' && createdb -h %s -U %s %s 'Restored by Muppy'" % (env.db_password, env.db_host, env.db_user, database,)
+    local(createdb_command_line)
+    
     try:
         jobs_number = int(jobs)
         jobs_option = '--jobs=%s' % jobs_number
@@ -183,14 +189,14 @@ def local_restore(backup_file_path, jobs=4):
         jobs_option = ''
 
     # Warning:
-    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s %s --create -d postgres %s"\
-                           % (env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
+    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s --no-owner %s -d %s %s"\
+                           % (env.db_password, env.db_host, env.db_user, jobs_option, database, backup_file_path,)
     local(restore_command_line)
 
 
 @task
-def restore(backup_file, jobs=4):
-    """:backup_file - Restore a database using specified backup file stored in {{backup_directory}}."""
+def restore(backup_file, new_database_name=None, jobs=4):
+    """:backup_file,[new_database_name] - Restore a database using specified backup file stored in {{backup_directory}}."""
     env_backup = (env.user, env.password,)
     env.user, env.password = env.adm_user, env.adm_password
 
@@ -205,10 +211,16 @@ def restore(backup_file, jobs=4):
 
     (timestamp, database, host,) = backup_file.split('.')[0].split('__')
 
+    # use new database name if specified
+    database = new_database_name or database
+
     if database in get_databases_list(embedded=True):
         dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s"\
                               % (env.db_password, env.db_host, env.db_user, database,)
         run(dropdb_command_line)
+
+    createdb_command_line = "export PGPASSWORD='%s' && createdb -h %s -U %s %s 'Restored by Muppy'" % (env.db_password, env.db_host, env.db_user, database,)
+    run(createdb_command_line)
 
     try:
         jobs_number = int(jobs)
@@ -216,8 +228,8 @@ def restore(backup_file, jobs=4):
     except Exception:
         jobs_option = ''
 
-    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s --no-owner %s --create -d postgres %s" \
-                           % (env.db_password, env.db_host, env.db_user, jobs_option, backup_file_path,)
+    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s --no-owner %s -d %s %s" \
+                           % (env.db_password, env.db_host, env.db_user, jobs_option, database, backup_file_path,)
     run(restore_command_line)
 
     env.user, env.password = env_backup
