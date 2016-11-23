@@ -128,20 +128,37 @@ def install_prerequisites():
     """Install System Prerequisites."""
     backup_user, backup_password = env.user, env.password
     env.user, env.password = env.root_user, env.root_password
-   
-    sudo('apt-get update --fix-missing')
-    sudo("apt-get install -y curl htop vim tmux")
-    sudo("apt-get install -y bzr mercurial git")
-    sudo("apt-get install -y python-dev libz-dev gcc")
-    sudo("apt-get install -y libxml2-dev libxslt1-dev")
-    sudo("apt-get install -y libpq-dev")
-    sudo("apt-get install -y libldap2-dev libsasl2-dev")
-    sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev") 
-    # TODO: Rework why do I need it
-    #sudo("apt-get liblcms1-dev")
-    sudo("apt-get install -y libwebp5  libwebp-dev")  
-    sudo("apt-get install -y libtiff-dev")  
-    sudo("apt-get install -y libyaml-dev")
+    v = get_version()
+    if env.system.version == '16.04':
+        sudo('apt-get update --fix-missing')
+        sudo("apt-get install -y libsasl2-dev python-dev libldap2-dev libssl-dev")
+        sudo("apt-get install -y libz-dev gcc")
+        sudo("apt-get install -y libxml2-dev libxslt1-dev")
+        sudo("apt-get install -y libpq-dev")
+        sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev") 
+        sudo("apt-get install -y libopenjpeg5 libopenjpeg-dev") 
+        sudo("apt-get install -y libwebp5  libwebp-dev")  
+        sudo("apt-get install -y libtiff-dev")  
+        sudo("apt-get install -y libyaml-dev")
+        sudo("apt-get install -y bzr mercurial git")
+        sudo("apt-get install -y curl htop vim tmux")
+        sudo("apt-get install -y supervisor")
+    
+    else:
+
+        sudo('apt-get update --fix-missing')
+        sudo("apt-get install -y curl htop vim tmux")
+        sudo("apt-get install -y bzr mercurial git")
+        sudo("apt-get install -y python-dev libz-dev gcc")
+        sudo("apt-get install -y libxml2-dev libxslt1-dev")
+        sudo("apt-get install -y libpq-dev")
+        sudo("apt-get install -y libldap2-dev libsasl2-dev")
+        sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev") 
+        # TODO: Rework why do I need it
+        #sudo("apt-get liblcms1-dev")
+        sudo("apt-get install -y libwebp5  libwebp-dev")  
+        sudo("apt-get install -y libtiff-dev")  
+        sudo("apt-get install -y libyaml-dev")
 
     print colors.green("System prerequisites installed.")
     env.user, env.password = backup_user, backup_password
@@ -155,7 +172,7 @@ def install_openerp_prerequisites():
     env.password = env.root_password
 
     v = get_version()
-    if env.system.version == '16.04':
+    if v == '16.04':
         sudo('apt install -y virtualenv')
     else:
 
@@ -186,22 +203,34 @@ def setup_locale(locale=None):
     backup_user, backup_password = env.user, env.password
     env.user, env.password = env.root_user, env.root_password
 
-    # We check locale is a validone
-    ret_val = sudo("locale-gen %s" % locale, quiet=False, warn_only=True)
-    if ret_val.failed:
-        print colors.red("ERROR: Unable to generate locale '%s'." % locale)
-        sys.exit(1)
+    if get_version() == '16.04':
+        language = locale.split('.')[0]
+        ret_val = sudo("locale-gen %s %s" % (language, locale,), quiet=False, warn_only=True)
+        if ret_val.failed:
+            print colors.red("ERROR: Unable to generate locale '%s'." % locale)
+            sys.exit(1)
+        ret_val = sudo('update-locale', quiet=False, warn_only=True)
+        if ret_val.failed:
+            print colors.red("ERROR: Unable to update-locale")
+            sys.exit(1)
 
-    language = locale.split('.')[0]
-    ret_val = sudo('update-locale LANG="%s" LANGUAGE="%s" LC_ALL="%s" LC_CTYPE="%s"' % (locale, language, locale, locale,), quiet=False, warn_only=True)
-    if ret_val.failed:
-        print colors.red("ERROR: Unable to update-locale with '%s'." % locale)
-        sys.exit(1)
+    else:
+        # We check locale is a validone
+        ret_val = sudo("locale-gen %s" % locale, quiet=False, warn_only=True)
+        if ret_val.failed:
+            print colors.red("ERROR: Unable to generate locale '%s'." % locale)
+            sys.exit(1)
 
-    ret_val = sudo('dpkg-reconfigure -f noninteractive locales', quiet=False, warn_only=True)
-    if ret_val.failed:
-        print colors.red("ERROR: Unable to 'sudo dpkg-reconfigure -f noninteractive locales'.")
-        sys.exit(1)
+        language = locale.split('.')[0]
+        ret_val = sudo('update-locale LANG="%s" LANGUAGE="%s" LC_ALL="%s" LC_CTYPE="%s"' % (locale, language, locale, locale,), quiet=False, warn_only=True)
+        if ret_val.failed:
+            print colors.red("ERROR: Unable to update-locale with '%s'." % locale)
+            sys.exit(1)
+
+        ret_val = sudo('dpkg-reconfigure -f noninteractive locales', quiet=False, warn_only=True)
+        if ret_val.failed:
+            print colors.red("ERROR: Unable to 'sudo dpkg-reconfigure -f noninteractive locales'.")
+            sys.exit(1)
 
     print colors.green("Locale '%s' configured." % locale)
     env.user, env.password = backup_user, backup_password

@@ -54,6 +54,11 @@ def install():
 
     sudo('apt-get install -y supervisor')
 
+    # Next line is required to solve this bug:
+    # https://bugs.launchpad.net/ubuntu/+source/supervisor/+bug/1594740
+    if env.system.version in ('16.04',):
+        sudo('systemctl enable supervisor.service')
+
     (env.user, env.password,) = env_backup
     return
 
@@ -138,7 +143,7 @@ def start_services():
     return False
 
 @task
-def activate_supervisor():
+def activate():
     """Activate supervisor by symlinking appserver generated supervisord.conf
 
     :return:
@@ -165,7 +170,7 @@ def activate_supervisor():
     return True
 
 @task
-def deactivate_supervisor():
+def deactivate():
     """De-activate supervisor by un-symlinking appserver generated supervisord.conf
 
     :return:

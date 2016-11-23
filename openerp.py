@@ -224,7 +224,7 @@ def set_active_script(flavor='openerp', force='False'):
 
     # deactivate currently active scripts
     if 'supervisor' in active_script:
-        supervisor.deactivate_supervisor()
+        supervisor.deactivate()
         print colors.green("INFO: Odoo services removed from supervisor configuration.")
 
     if 'openerp-server' in active_script:
@@ -237,7 +237,7 @@ def set_active_script(flavor='openerp', force='False'):
 
     # activate requested script
     if requested_script == 'supervisor':
-        supervisor.activate_supervisor()
+        supervisor.activate()
         print colors.green("INFO: Odoo services are now managed by supervisor.")
         print colors.magenta("WARNING: Odoo services in 'auto' mode have restarted.")
     else:
@@ -611,12 +611,15 @@ def install_odoo9_html_prerequisites():
     env.password = env.root_password
     
     sudo('apt-get install -y nodejs npm')
+    sudo('ln -fs /usr/bin/nodejs /usr/local/bin/node')  
+    
     sudo('npm install -g less less-plugin-clean-css')
+    # To check but this seems no longr necessary
+    #sudo('ln -s /usr/local/bin/lessc /usr/bin/lessc')  
+
     sudo('wget http://download.gna.org/wkhtmltopdf/0.12/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb')
     sudo('apt-get install -y fontconfig libxrender1 libjpeg-turbo8')
     sudo('dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb')
-    sudo('ln -s /usr/local/bin/lessc /usr/bin/lessc')
-    sudo('node')
 
 @task
 def navigate():

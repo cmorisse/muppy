@@ -359,7 +359,6 @@ def install(version="default"):
     """:[version=9.3] Install postgresql specified version or the version defined in config file."""
     env_backup = (env.user, env.password,)
     env.user, env.password = env.root_user, env.root_password
-
     if version == 'default':
         version = PostgreSQLConfig.version
 

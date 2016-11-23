@@ -506,7 +506,9 @@ def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_pass
     env.user = adm_user
     env.password = adm_password
     appserver_path = '%s/%s/' % (env.customer_path, _AppserverRepository.repository.destination_directory, )
+
     with cd(appserver_path):
+        sudo('./install.sh dependencies')
         run('./install.sh openerp')
     print green("Appserver installed.")
 
@@ -528,7 +530,7 @@ def openerp_remove_appserver():
 
 
 @task
-def openerp_create_services():
+def openerp_create_initd_services():
     """Create the openerp services (classic and gunicorn) and default to openerp classic"""
     env.user = env.root_user
     env.password = env.root_password
@@ -603,9 +605,11 @@ def install_openerp_application_server():
     reboot()
 
 @task
-def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True', phase3='True', phase4='True', phase5='True', phase6='True'):
-    """Install a complete OpenERP appserver (including database server). You must update/upgrade system before manually"""
-
+def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True', phase3='True', phase4='True', 
+                                      phase5='True', phase6='True', phase7='True'):
+    """Install a complete OpenERP appserver (including database server). You must update/upgrade system before manually
+    """
+    
     if not _AppserverRepository.enabled:
         print colors.red("ERROR: OpenERP configuration missing. Installation aborted.")
         sys.exit(1)
@@ -617,30 +621,37 @@ def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True
     phase4 = eval(phase4)
     phase5 = eval(phase5)
     phase6 = eval(phase6)
+    phase7 = eval(phase7)
 
     system.install_prerequisites()    
 
 
     # Install locale !
     if phase0:
+        print blue("Beginning Phase 0")
         if env.system.install:
             system.setup_locale()
 
     # Install PostgreSQL
     if phase1:
+        print blue("Beginning Phase 1")
         postgresql.install()
         pg_create_openerp_user()
 
     # Install System packages required for OpenERP
     if phase2:
-        system.install_openerp_prerequisites()    
+        print blue("Beginning Phase 2") 
+        system.install_openerp_prerequisites()
+        openerp.install_odoo9_html_prerequisites()  # wkhtml2pgdf, node ...
 
     # Create OpenERP admin user
     if phase3:
+        print blue("Beginning Phase 3")
         sys_create_openerp_user()
 
     # Create directories (/opt/openerp/customer, /var/log)
     if phase4:
+        print blue("Beginning Phase 4")        
         sys_create_customer_directory()
         sys_create_log_directory()
         sys_create_backup_directory()
@@ -648,11 +659,16 @@ def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True
         sys_create_buffer_directory()
 
     if phase5:
+        print blue("Beginning Phase 5")
         openerp_clone_appserver()
+
+    if phase6:
+        print blue("Beginning Phase 6")
         openerp_bootstrap_appserver()
         
-    # Setup init scripts
-    if phase6:
+    # Setup services scripts
+    if phase7:
+        print blue("Beginning Phase 7")        
         openerp_create_services()
 
     reboot()
