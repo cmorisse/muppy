@@ -16,6 +16,7 @@ todelete/
 eggs_todelete/
 git_ignored/
 configsv3
+templates
 
 ; For bootstrap
 bin
