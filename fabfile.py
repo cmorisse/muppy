@@ -281,7 +281,8 @@ def sys_install_openerp_prerequisites():
     sudo("apt-get install -y libyaml-dev")
     sudo("apt-get install -y bzr mercurial git")
     sudo("apt-get install -y curl htop vim tmux")
-    sudo("apt-get install -y supervisor")
+    
+    supervisor.install()
 
     print green("OpenERP prerequisites installed.")
 
@@ -586,7 +587,8 @@ def install_openerp_application_server():
     if env.system.install:
         system.setup_locale()
 
-    system.install_prerequisites()
+    system.install_openerp_prerequisites()
+    openerp.install_odoo9_html_prerequisites()  # wkhtml2pgdf, node ...
     
     sys_create_openerp_user()
     
@@ -600,7 +602,7 @@ def install_openerp_application_server():
     openerp_clone_appserver()
     openerp_bootstrap_appserver()
     
-    openerp_create_services()
+    supervisor.activate()
     
     reboot()
 
@@ -669,7 +671,7 @@ def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True
     # Setup services scripts
     if phase7:
         print blue("Beginning Phase 7")        
-        openerp_create_services()
+        supervisor.activate()
 
     reboot()
 
@@ -699,13 +701,12 @@ def openerp_reinstall_appserver():
     sys_create_muppy_transactions_directory()
     sys_create_buffer_directory()
     
-    openerp_remove_init_script_links()
     openerp_archive_appserver()
     
     openerp_clone_appserver()
     openerp_bootstrap_appserver()
     
-    openerp_create_services()
+    supervisor.activate()
     
     reboot()
 
