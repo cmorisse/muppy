@@ -155,7 +155,7 @@ def activate():
     # launch supervisor daemon
     if env.system.distribution == 'ubuntu' and env.system.version == '16.04':
         print blue("Launching supervisor daemon..")
-        sudo('/etc/init.d/supervisor start')
+        sudo('systemctl supervisor start')
 
     # For ubuntu
     # TODO: make this a parameter

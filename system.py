@@ -289,8 +289,11 @@ def user_set_password(username, password):
     env_backup = (env.user, env.password,)
     env.user = env.root_user
     env.password = env.root_password
-    sudo("echo '%s:%s' > pw.tmp" % (username, password,), quiet=False)
-    sudo("chpasswd < pw.tmp", quiet=False)
+    
+    sudo("echo '%s:%s' > .pw.tmp" % (username, password,), quiet=False)
+    sudo("chpasswd < .pw.tmp", quiet=False)
+    sudo("rm -rf .pw.tmp", quiet=False)
+
     (env.user, env.password,) = env_backup
 
 
@@ -332,29 +335,27 @@ def user_create(username, password, groups="", system_user=False, quiet=False):
         if group_name not in actual_group_list:
             sudo('usermod -a -G %s %s' % (group_name, username,), quiet=quiet)
 
+    user_set_password(username, password)
+
     # We add admin ssh keys to user authorized keys
     sudo("mkdir -p /home/%s/.ssh" % username, user=username)
     for key in SystemConfig.admin_ssh_keys:
-        sudo("echo %s >> /home/%s/.ssh/authorized_keys" % (key, username,), user=username)
-        #append("/home/%s/.ssh/authorized_keys" % username, key)
+        append("/home/%s/.ssh/authorized_keys" % username, key, use_sudo=True)
 
-    user_set_password(username, password)
-
-    # Generate a ssh key for username if it does not exists
     env.user = username
     env.password = password
+    # Generate a ssh key for username if it does not exists
     if not exists('~/.ssh/id_rsa'):
         run("ssh-keygen -t rsa -N \"\" -f ~/.ssh/id_rsa", quiet=quiet)
-
-    # download ssh key
+            
+    # download generated user key for user
     host_name = get_hostname()
     ssh_key_file_name = 'ssh_keys_temp/%s__%s__id_rsa.pub' % (host_name, username,)
     if os.path.exists(ssh_key_file_name):
         os.remove(ssh_key_file_name)
     get('/home/%s/.ssh/id_rsa.pub' % (username,), ssh_key_file_name)
-    ssh_key_file = open(ssh_key_file_name)
-    ssh_key_string = ssh_key_file.read()
-
+    #ssh_key_file = open(ssh_key_file_name)
+    #ssh_key_string = ssh_key_file.read()
 
     (env.user, env.password) = env_backup
     return
