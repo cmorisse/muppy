@@ -46,8 +46,6 @@ TEMPLATE_CFG_SECTION = """
 # Note that this option requires extra configuration steps
 #activate_dropbox_integration = False
 
-
-
 """
 
 
@@ -379,7 +377,7 @@ def install(version="default"):
                 sudo('apt-get install -y postgresql-9.5')
             
             elif env.system.version == '14.04':
-                print red("PostgreSQL 9.5 installation on Ubuntu '%s' not implemented. Installation aborted." % env.system.version)
+                print red("PostgreSQL 9.5 installation on Ubuntu '%s' is not implemented. Installation aborted." % env.system.version)
                 exit(128)
         else:
             print red("Dont't know how to install PostgreSQL on '%s'. Installation aborted.")
