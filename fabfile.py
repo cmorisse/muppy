@@ -48,6 +48,11 @@ if config_parser.has_option('env', 'appserver_id'):
 else:
     print red("ERROR: missing appserver_id required entry.")
 
+if config_parser.has_option('env', 'odoo_version'):
+    env.odoo_version = config_parser.get('env', 'odoo_version')
+else:
+    env.odoo_version = '7'
+
 if config_parser.has_option('env', 'linux_distribution'):
     env.linux_distribution = config_parser.get('env', 'linux_distribution')
 else:
@@ -261,10 +266,13 @@ def sys_install_openerp_prerequisites():
 
     # TODO All of this must move to the repository install.sh
     # TODO: or add some logic to handle different versions behaviour
-    #sudo('wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py')
     sudo('curl https://bootstrap.pypa.io/ez_setup.py -o ez_setup.py')
-
-    sudo('python ez_setup.py')
+    
+    if end.odoo_version == '7':
+        sudo('python ez_setup.py --version=21.2.1')
+    else:
+        sudo('python ez_setup.py')
+            
     sudo('rm ez_setup.py')
 
     sudo("easy_install virtualenv==1.11.6")
