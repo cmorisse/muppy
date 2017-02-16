@@ -46,6 +46,13 @@ TEMPLATE_CFG_SECTION = """
 # Note that this option requires extra configuration steps
 #activate_dropbox_integration = False
 
+#
+# target_scp_server
+# If set with a valid muppy hostname that accept ssh passwordless connection,
+# backup script will scp each database backup file to this server.
+# target_scp_server=10.0.0.2
+
+
 """
 
 
@@ -61,11 +68,11 @@ def parse_config(config_parser):
     PostgreSQLConfig.backup_retention_period_in_days = (config_parser.has_option('postgresql', 'backup_retention_period_in_days') and config_parser.get('postgresql', 'backup_retention_period_in_days')) or 7
     PostgreSQLConfig.backup_cron_m_h_dom_mon_dow = (config_parser.has_option('postgresql', 'backup_cron_m_h_dom_mon_dow') and config_parser.get('postgresql', 'backup_cron_m_h_dom_mon_dow')) or "00 2 * * *"
     PostgreSQLConfig.activate_dropbox_integration = (config_parser.has_option('postgresql', 'activate_dropbox_integration') and config_parser.get('postgresql', 'activate_dropbox_integration')) or False
+    PostgreSQLConfig.target_scp_server = (config_parser.has_option('postgresql', 'target_scp_server') and config_parser.get('postgresql', 'target_scp_server')) or False
 
     PostgreSQLConfig.backup_files_directory = os.path.join(PostgreSQLConfig.backup_root_directory, 'postgresql')
     PostgreSQLConfig.backup_scripts_directory = os.path.join(PostgreSQLConfig.backup_root_directory, 'scripts')
-    PostgreSQLConfig.backup_script_path = os.path.join(PostgreSQLConfig.backup_scripts_directory,
-                                                       'muppy_backup_all_postgresql_databases.sh')
+    PostgreSQLConfig.backup_script_path = os.path.join(PostgreSQLConfig.backup_scripts_directory, 'muppy_backup_all_postgresql_databases.sh')
 
     return PostgreSQLConfig
 
@@ -323,6 +330,7 @@ def install_backup_script():
         'backup_email_recipients': env.postgresql.backup_email_recipients,
         'backup_retention_period_in_days': env.postgresql.backup_retention_period_in_days,
         'activate_dropbox_integration': env.postgresql.activate_dropbox_integration,
+        'target_scp_server': env.postgresql.target_scp_server,
         'pg_user': env.db_user,
         'pg_password': env.db_password,
     }

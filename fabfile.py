@@ -678,7 +678,8 @@ def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True
         
     # Setup services scripts
     if phase7:
-        print blue("Beginning Phase 7")        
+        print blue("Beginning Phase 7")
+        supervisor.install()        
         supervisor.activate()
 
     reboot()
