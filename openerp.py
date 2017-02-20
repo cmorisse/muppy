@@ -1,3 +1,4 @@
+import os
 from urlparse import urlparse
 from fabric.api import *
 from fabric.operations import *
@@ -436,8 +437,8 @@ def deploy_start(databases=None, new_refspec=None, launch_buildout='True'):
     file_list = ",".join(database_dict.values())
 
     # open a log file
-    log_file_name = "logs/%s__%s__deploy.log" % (timestamp, hostname,)
-    log_file = open(log_file_name, "w")
+    log_file_name = "%s__%s__deploy.log" % (timestamp, hostname,)
+    log_file = open("logs/%s" % log_file_name, "w")
     print blue("INFO: Deploy log file is '%s'" % log_file_name)
 
     # generate lock file content
