@@ -509,7 +509,7 @@ def deploy_start(databases=None, new_refspec=None, launch_buildout='True'):
                     exit(1)
 
     log_file.close()
-    put(log_file_name, os.path.join(env.muppy_transactions_directory, log_file_name))
+    put("logs/%s" % log_file_name, os.path.join(env.muppy_transactions_directory, log_file_name))
 
     if error_during_update:
         print red("ERROR: One or more update failed. OpenERP Server won't be restarted.")
