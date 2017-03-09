@@ -36,7 +36,6 @@ if not env.get('config_file', False):
     print 
     exit(0)
 
-
 config_parser = ConfigParser.ConfigParser()
 config_parser.readfp(open(env.config_file))
 if not config_parser.has_option('env', 'muppy_version') or not __version__.startswith(config_parser.get('env', 'muppy_version')):
@@ -739,7 +738,14 @@ def ssh(user='adm'):
         print colors.red("ERROR: Unknown user %s !" % user)
         sys.exit(1)
 
-    print "Password= "+ blue("%s" % ssh_password)
-    
-    subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])
+    if ssh_password:
+        print "Password= "+ blue("%s" % ssh_password)
+    else:
+        print colors.yellow("This user is passwordless")
+
+    if env.key_filename:
+        pass
+        subprocess.call(["ssh", "-i", env.key_filename[0], "-p", env.port, "%s@%s" % (ssh_user, env.host)])        
+    else:    
+        subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])
 
