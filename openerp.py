@@ -618,7 +618,7 @@ def install_odoo9_html_prerequisites():
     # To check but this seems no longr necessary
     #sudo('ln -s /usr/local/bin/lessc /usr/bin/lessc')  
 
-    sudo('wget http://download.gna.org/wkhtmltopdf/0.12/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb')
+    sudo('wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb')
     sudo('apt-get install -y fontconfig libxrender1 libjpeg-turbo8')
     sudo('dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb')
 

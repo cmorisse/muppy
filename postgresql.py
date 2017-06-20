@@ -83,8 +83,8 @@ def psql(database='postgres'):
     env.user = env.adm_user
     env.password = env.adm_password
 
-    psql_command_line = "export PGPASSWORD='%s' && psql -h localhost -U %s %s" % (env.db_password, env.db_user, database)
-    print magenta("Connecting to database '%s' on server '%s'" % (database, env.host))
+    psql_command_line = "export PGPASSWORD='%s' && psql -h %s -p %s -U %s %s" % (env.db_password, env.db_host, env.db_port, env.db_user, database)
+    print magenta("Connecting to database '%s' on server '%s'" % (database, env.db_host))
     print magenta("Using command: %s" % psql_command_line)
     env_output_prefix_backup = env.output_prefix
     env.output_prefix = ''
@@ -99,7 +99,7 @@ def get_databases_list(embedded=False):
     # 'psql -h localhost -U openerp --no-align --pset footer -t -c "SELECT datname FROM pg_database WHERE datistemplate = FALSE ;" postgres'
     env_backup = (env.user, env.password,)
     env.user, env.password = env.adm_user, env.adm_password
-    get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -U %s --no-align --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host, env.db_user)
+    get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -p %s -U %s --no-align --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host, env.db_port, env.db_user)
     command = run(get_databases_cl, quiet=True)
 
     env.user, env.password = env_backup
@@ -136,7 +136,7 @@ def backup(database, backup_file_name=None):
         hostname = get_hostname()
         backup_file_name = os.path.join(env.postgresql.backup_files_directory, "%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
 
-    backup_command_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_user, backup_file_name, database,)
+    backup_command_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -p %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_port, env.db_user, backup_file_name, database,)
     run(backup_command_line)
 
     env.user, env.password = env_backup
@@ -158,7 +158,7 @@ def local_backup(database, backup_file_name=None):
         local('mkdir -p backups/%s' % hostname)
         backup_file_name = os.path.join('backups/%s' % hostname, "%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
 
-    backup_command_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_user, backup_file_name, database,)
+    backup_command_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -p %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_port, env.db_user, backup_file_name, database,)
     local(backup_command_line)
 
     env.user, env.password = env_backup
