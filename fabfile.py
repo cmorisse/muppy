@@ -1,4 +1,5 @@
 # coding: utf8
+import sys
 import os
 from fabric.api import *
 from fabric.contrib.files import upload_template, exists, sed
@@ -25,7 +26,6 @@ import supervisor
 
 __version__ = '0.3'
 
-# TODO: Installation JasperReport Server
 
 if not env.get('config_file', False):
     print blue("Launching muppy version %s" % __version__)

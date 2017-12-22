@@ -26,6 +26,7 @@ parts
 develop-eggs
 downloads
 etc
+.c9
 
 ; For virtualenv 
 py27

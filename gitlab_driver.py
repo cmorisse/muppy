@@ -3,27 +3,35 @@ import gitlab
 import requests
 from fabric import colors
 from repository import Repository
-
+import pudb
 
 class GitlabRepository(Repository):
 
     def __init__(self, user, password, url, base_path):
         super(GitlabRepository, self).__init__(user, password, url, base_path)
-        self.gitlab = gitlab.Gitlab(self.hostname)
-        self.gitlab.login(self.user, self.password)
+        host_url = "http://%s" % self.hostname  # API is always reached via http
+        if user:
+            self.gitlab = gitlab.Gitlab(host_url, email=user, password=password)
+            self.gitlab.auth()
+        else:  # Try to use password as a token
+            self.gitlab = gitlab.Gitlab(host_url, password, api_version=4)
 
-        self.gitlab_project_id = None
+        #self.gitlab_project_id = None
+        self.gitlab_project = None
         i = 1
-        projects = self.gitlab.getprojects(page=i, per_page=100)
-
-        while projects and not self.gitlab_project_id:
+        #projects = self.gitlab.getprojects(page=i, per_page=100)
+        #projects = self.gitlab.projects.list(page=i, per_page=100)
+        projects = self.gitlab.projects.list(page=i, per_page=100)
+        
+        while projects and not self.gitlab_project:
             for project in projects:
-                if project['path_with_namespace'] == "%s/%s" % (self.owner, self.name,):
-                    self.gitlab_project_id = project['id']
+                if project.path_with_namespace == "%s/%s" % (self.owner, self.name,):
+                    self.gitlab_project = project
+                    #self.gitlab_project_id = project.id
 
             i += 1
-            projects = self.gitlab.getprojects(page=i, per_page=100)
-        if not self.gitlab_project_id:
+            projects = self.gitlab.projects.list(page=i, per_page=100)
+        if not self.gitlab_project:
             raise Exception("Gitlab Error", "Unable to find Gitlab repository: %s" % self.clone_url)
 
     def search_deployment_key(self, key_name=''):
@@ -34,12 +42,14 @@ class GitlabRepository(Repository):
         """
         if not key_name:
             return []
-            
-        all_keys_list = self.gitlab.listdeploykeys(self.gitlab_project_id)
+
+        #all_keys_list = self.gitlab.deploykeys.list()(self.gitlab_project_id)
+        all_keys_list = self.gitlab_project.keys.list()
 
         if not all_keys_list:
             return []
-        keys_list = filter(None, [key['id'] if key['title'] == key_name else None for key in all_keys_list])
+#        keys_list = filter(None, [key['id'] if key['title'] == key_name else None for key in all_keys_list])
+        keys_list = filter(None, [key.id if key.title == key_name else None for key in all_keys_list])
         return keys_list
 
     def post_deployment_key(self, key_name, key_string):
@@ -52,8 +62,11 @@ class GitlabRepository(Repository):
         :return: True or False
         :rtype: boolean
         """
-        return self.gitlab.adddeploykey(self.gitlab_project_id, key_name, key_string)
-
+        return self.gitlab_project.keys.create({'title': key_name,
+                                                'key': key_string,
+                                                'id': self.gitlab_project.id,
+                                                'can_push': False})
+    
     def delete_deployment_key(self, key_id):
         """
         Delete deployment key
@@ -62,7 +75,8 @@ class GitlabRepository(Repository):
         :return: True or False
         :rtype: boolean
         """
-        result = self.gitlab.deletedeploykey(self.gitlab_project_id, key_id)
+        key = self.gitlab_project.keys.get(key_id)
+        result = key.delete()
         return result
 
     def update_deployment_key(self, key_name, key_string):
