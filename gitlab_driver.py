@@ -3,7 +3,6 @@ import gitlab
 import requests
 from fabric import colors
 from repository import Repository
-import pudb
 
 class GitlabRepository(Repository):
 
