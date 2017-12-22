@@ -13,7 +13,7 @@ class GitlabRepository(Repository):
             self.gitlab = gitlab.Gitlab(host_url, email=user, password=password)
             self.gitlab.auth()
         else:  # Try to use password as a token
-            self.gitlab = gitlab.Gitlab(host_url, password, api_version=4)
+            self.gitlab = gitlab.Gitlab(host_url, password, api_version='4')
 
         #self.gitlab_project_id = None
         self.gitlab_project = None
