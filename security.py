@@ -115,7 +115,7 @@ def get_current_ip():
     ip_regex = re.compile('^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
     services = [
         "http://bot.whatismyipaddress.com",
-        "http://ip4.telize.com"
+        #"http://ip4.telize.com"  # switch to paid plan in 2015
     ]
 
     checked_ips = []
