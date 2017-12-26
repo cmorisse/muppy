@@ -15,8 +15,8 @@
 todelete/
 eggs_todelete/
 git_ignored/
-configsv3
 templates
+.vscode/
 
 ; For bootstrap
 bin
@@ -44,7 +44,6 @@ backups/
 *.log
 draft/
 bash_scripts/
-
+configsv3
 docker/
-
-.vscode/
+ikpdb/
