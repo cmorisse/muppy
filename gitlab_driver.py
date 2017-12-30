@@ -8,7 +8,7 @@ class GitlabRepository(Repository):
 
     def __init__(self, user, password, url, base_path):
         super(GitlabRepository, self).__init__(user, password, url, base_path)
-        host_url = "http://%s" % self.hostname  # API is always reached via http
+        host_url = "https://%s" % self.hostname  # API is always reached via http
         if user:
             self.gitlab = gitlab.Gitlab(host_url, email=user, password=password)
             self.gitlab.auth()
@@ -17,19 +17,13 @@ class GitlabRepository(Repository):
 
         #self.gitlab_project_id = None
         self.gitlab_project = None
-        i = 1
-        #projects = self.gitlab.getprojects(page=i, per_page=100)
-        #projects = self.gitlab.projects.list(page=i, per_page=100)
-        projects = self.gitlab.projects.list(page=i, per_page=100)
+        projects = self.gitlab.projects.list(search=self.name)
         
-        while projects and not self.gitlab_project:
-            for project in projects:
-                if project.path_with_namespace == "%s/%s" % (self.owner, self.name,):
-                    self.gitlab_project = project
-                    #self.gitlab_project_id = project.id
+        for project in projects:
+            if project.path_with_namespace == "%s/%s" % (self.owner, self.name,):
+                self.gitlab_project = project
+                #self.gitlab_project_id = project.id
 
-            i += 1
-            projects = self.gitlab.projects.list(page=i, per_page=100)
         if not self.gitlab_project:
             raise Exception("Gitlab Error", "Unable to find Gitlab repository: %s" % self.clone_url)
 
