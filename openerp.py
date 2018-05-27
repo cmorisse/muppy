@@ -630,3 +630,164 @@ def navigate():
     """Open Odoo home page in default browser [Experimental, MacOS Only]"""
     #import pudb ; pudb.set_trace()
     local('open http://%s:8069/' % env.hosts[0])
+
+
+@task
+def test_params(deploy_refspec, **kwargs):
+    """:"refspec,db_name1=[backup_path];db_name2=[backup_path2]",launch_buildout=True - Deploy version designed by <<refspec>> and update <<databases>>. If optional backup_path is supplied use it instead of doing a backup. Add buildout=false to prevent doing a buildout."""
+
+    # if refspec is unspecifed will checkout latest version of branch master or default
+    # NOTE: We do backup the postgres db but we don't restore it in case deploy fail. You must
+    # use deploy_rollback for that
+
+    launch_buildout = True
+    if 'launch_buildout' in kwargs:
+        launch_buildout = kwargs['launch_buildout'].lower()
+        if launch_buildout in ('false', 'no', '0', ''):
+            launch_buildout = False
+        del kwargs['launch_buildout']
+    
+    databases = kwargs.keys()
+    
+    print "new_refspec=%s" % refspec
+    print "kwargs=%s" % (kwargs,)
+    return
+
+
+#def deploy_starth(databases=None, new_refspec=None, launch_buildout='True'):
+#    """:"db_name1;db_name2",refspec,launch_buildout='True' - Deploy version designed by <<refspec>> param and update <<databases>>. Add True after the refspec to force the buildout."""
+@task
+def deploy_starth(deploy_refspec, **kwargs):
+    """:"refspec,db_name1=[backup_path];db_name2=[backup_path2]",launch_buildout=True - Deploy version designed by <<refspec>> and update <<databases>>. If optional backup_path is supplied use it instead of doing a backup. Add buildout=false to prevent doing a buildout."""
+    env.user, env.password = env.adm_user, env.adm_password
+
+    # if refspec is unspecifed will checkout latest version of branch master or default
+    # NOTE: We do backup the postgres db but we don't restore it in case deploy fail. You must
+    # use deploy_rollback for that
+
+    launch_buildout = True
+    if 'launch_buildout' in kwargs:
+        launch_buildout = kwargs['launch_buildout'].lower()
+        if launch_buildout in ('false', 'no', '0', ''):
+            launch_buildout = False
+        del kwargs['launch_buildout']
+    
+    databases = kwargs.keys()
+    if not databases:
+        print red("ERROR: missing required database list parameter.")
+        sys.exit(128)
+
+    if not deploy_refspec:
+        print red("ERROR: missing required refspec parameter.")
+        sys.exit(128)
+    if not check_refspec(deploy_refspec, True):
+        print red("ERROR: refspec %s does not exist in repo." % deploy_refspec)
+        sys.exit(128)
+
+    with cd(env.openerp.repository.path):
+        old_refspec = run(env.openerp.repository.get_refspec_command_line(), quiet=True)
+    print blue("Current refspec: %s" % old_refspec)
+
+    # let's check that databases exist
+    requested_database_list = databases
+    existing_database_list = postgresql.get_databases_list(True)
+    database_not_found = False
+    print blue("Checking requested databases exist: "),
+    for requested_database in requested_database_list:
+        if requested_database not in existing_database_list:
+            database_not_found = True
+            print red("  - %s : Error" % requested_database)
+        else:
+            print green("  - %s : Ok" % requested_database)
+    if database_not_found:
+        print red("deployment aborted.")
+        exit(1)
+
+    # We atomicaly generate a lock file or fail
+    timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+    hostname = get_hostname()
+    database_dict = {requested_database: os.path.join(env.postgresql.backup_files_directory, "%s__%s__%s.pg_dump" % (timestamp, requested_database, hostname,)) for requested_database in requested_database_list}
+    file_list = ",".join(database_dict.values())
+
+    # open a log file
+    log_file_name = "%s__%s__deploy.log" % (timestamp, hostname,)
+    log_file = open("logs/%s" % log_file_name, "w")
+    print blue("INFO: Deploy log file is '%s'" % log_file_name)
+
+    # generate lock file content
+    lock_file_content = '[deploy]\nlog_file = %s\nold_refspec = %s\nnew_refspec = %s\ndatabases_to_update = %s' % (log_file_name, old_refspec, deploy_refspec, databases, )
+    lock_file_path = os.path.join(env.muppy_transactions_directory, 'deploy.lock')
+    create_lock = run('set -o noclobber && echo "%s" > %s' % (lock_file_content, lock_file_path,), quiet=True)
+    if create_lock.failed:
+        print red("ERROR: Unable to acquire %s" % lock_file_path)
+        exit(1)
+
+    # We have the lock, let's stop server and backup dbs
+    stop()
+
+    # backup the databases
+    update_lock_file = run('echo "\n[databases_backups]" >> %s' % (lock_file_path,), quiet=True)
+    if update_lock_file.failed:
+        print red("ERROR: Unable to update lock file: '%s'" % lock_file_path)
+        exit(1)
+
+    postgresql.backup('postgres')  # we always backup postgres just in case
+    for database_name, backup_file_name in database_dict.items():
+        postgresql.backup(database_name, backup_file_name)
+        lock_file_content = '%s = %s' % (database_name, backup_file_name,)
+        update_lock_file = run('echo "%s" >> %s' % (lock_file_content, lock_file_path,), quiet=True)
+        if update_lock_file.failed:
+            print red("ERROR: Unable to update lock file: '%s' with '%s'" % (lock_file_path, lock_file_content,))
+            exit(1)
+
+    # checkout AND buildout
+    checkout_revision(deploy_refspec, launch_buildout)
+
+    # openerp/update all modules on specified database(s)
+    lock_file_content = "\n[update_database_statuses]"
+    update_lock_file = run('echo "%s" >> %s' % (lock_file_content, lock_file_path,), quiet=True)
+    if update_lock_file.failed:
+        print red("ERROR: Unable to update lock file: '%s' with '%s'" % (lock_file_path, lock_file_content,))
+        exit(1)
+
+    error_during_update = False
+    for database_name, backup_file_name in database_dict.items():
+        if database_name == 'postgres':
+            continue
+        with cd(env.openerp.repository.path):
+            print blue("INFO: Updating database '%s' for addons: '%s'." % (database_name, env.addons_list,))
+            command_line = 'bin/start_openerp -d %s -u %s --stop-after-init' % (database_name, env.addons_list,)
+            stdout = StringIO.StringIO()
+            # bin/start_openerp --update always succeed. So we need to check stdout to find ERROR or Traceback
+            retval = run(command_line, warn_only=True, stdout=stdout)
+            error_log = stdout.getvalue()
+            log_file.write(error_log)
+
+            update_failed = 'ERROR' in error_log or 'Traceback' in error_log
+            if update_failed:
+                error_during_update = True
+                lock_file_content = "%s = error" % database_name
+                update_lock_file = run('echo "%s" >> %s' % (lock_file_content, lock_file_path,), quiet=True)
+                if update_lock_file.failed:
+                    print red("ERROR: Unable to update lock file: '%s' with '%s'" % (lock_file_path, lock_file_content,))
+                    exit(1)
+                print red("ERROR: Database '%s' update failed for addons='%s'. See detail in log '%s'." % (database_name, env.addons_list, log_file_name,))
+            else:  # stderr is clean
+                print green("INFO: Database '%s' update succeded for addons=%s. See detail in log '%s'." % (database_name, env.addons_list, log_file_name))
+
+                lock_file_content = "%s = ok" % database_name
+                update_lock_file = run('echo "%s" >> %s' % (lock_file_content, lock_file_path,), quiet=True)
+                if update_lock_file.failed:
+                    print red("ERROR: Unable to update lock file: '%s' with '%s'" % (lock_file_path, lock_file_content,))
+                    exit(1)
+
+    log_file.close()
+    put("logs/%s" % log_file_name, os.path.join(env.muppy_transactions_directory, log_file_name))
+
+    if error_during_update:
+        print red("ERROR: One or more update failed. OpenERP Server won't be restarted.")
+        sys.exit(1)
+
+    print green("Deploy ok ; restarting OpenERP server")
+    start()
+    sys.exit(0)
