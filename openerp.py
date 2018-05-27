@@ -299,7 +299,10 @@ def buildout():
     env.password = env.adm_password
 
     with cd(env.openerp.repository.path):
-        run('bin/buildout')
+        if exists('bin/buildout'):
+            run('bin/buildout')
+        else:
+            run('py27/bin/buildout')
     print colors.magenta("WARNING: Check log above for errors !")
     print colors.green("Server '%s' buildout finished." % env.openerp.repository.path)
 
