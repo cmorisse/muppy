@@ -337,7 +337,7 @@ def checkout_revision(refspec=None, launch_buildout='True'):
         sys.exit(128)
     print green("Repository '%s' is now at revision '%s'." % (env.openerp.repository.path, refspec))
 
-    if launch_buildout == 'True':
+    if launch_buildout.lower() in ('true', 'ok', 'yes', '1'):
         buildout()
 
 
@@ -657,22 +657,23 @@ def test_params(deploy_refspec, **kwargs):
 #def deploy_starth(databases=None, new_refspec=None, launch_buildout='True'):
 #    """:"db_name1;db_name2",refspec,launch_buildout='True' - Deploy version designed by <<refspec>> param and update <<databases>>. Add True after the refspec to force the buildout."""
 @task
-def deploy_starth(deploy_refspec, **kwargs):
-    """:"refspec,db_name1=[backup_path];db_name2=[backup_path2]",launch_buildout=True - Deploy version designed by <<refspec>> and update <<databases>>. If optional backup_path is supplied use it instead of doing a backup. Add buildout=false to prevent doing a buildout."""
+def deploy_starth(deploy_refspec, *args, **kwargs):
+    """:"refspec,db_name1,db_name2,...,db_name3=[backup_path3]",launch_buildout=True - Deploy version designed by <<refspec>> and update <<databases>>. If optional backup_path is supplied use it instead of doing a backup. Add buildout=false to prevent doing a buildout."""
     env.user, env.password = env.adm_user, env.adm_password
 
     # if refspec is unspecifed will checkout latest version of branch master or default
     # NOTE: We do backup the postgres db but we don't restore it in case deploy fail. You must
     # use deploy_rollback for that
 
-    launch_buildout = True
+    launch_buildout = 'True'
     if 'launch_buildout' in kwargs:
         launch_buildout = kwargs['launch_buildout'].lower()
         if launch_buildout in ('false', 'no', '0', ''):
-            launch_buildout = False
+            launch_buildout = 'False'
         del kwargs['launch_buildout']
     
-    databases = kwargs.keys()
+    existing_backups = kwargs.copy()
+    databases = list(args) + kwargs.keys()
     if not databases:
         print red("ERROR: missing required database list parameter.")
         sys.exit(128)
@@ -692,7 +693,7 @@ def deploy_starth(deploy_refspec, **kwargs):
     requested_database_list = databases
     existing_database_list = postgresql.get_databases_list(True)
     database_not_found = False
-    print blue("Checking requested databases exist: "),
+    print blue("Checking requested databases exist: ")
     for requested_database in requested_database_list:
         if requested_database not in existing_database_list:
             database_not_found = True
@@ -703,10 +704,30 @@ def deploy_starth(deploy_refspec, **kwargs):
         print red("deployment aborted.")
         exit(1)
 
+    # let's check that provided backups exist
+    if existing_backups:
+        backup_not_found = False
+        print blue("Checking backup files exist:")
+        for database_name in existing_backups:
+            backup_filename = existing_backups[database_name]
+            backup_file_path = os.path.join(env.postgresql.backup_files_directory, backup_filename)
+            if backup_filename:
+                if exists(backup_file_path):
+                    existing_backups[database_name] = backup_file_path
+                    print green("  - '%s': Ok - will use existing backup '%s'" % (database_name, backup_filename,))
+                else:
+                    backup_not_found = True
+                    print red("  - '%s': Error - backup file not found '%s'" % (database_name, backup_filename,))
+            else:
+                print green("  - %s : Ok" % backup_filename)
+        if backup_not_found:
+            print red("deployment aborted.")
+            exit(1)
+
     # We atomicaly generate a lock file or fail
     timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     hostname = get_hostname()
-    database_dict = {requested_database: os.path.join(env.postgresql.backup_files_directory, "%s__%s__%s.pg_dump" % (timestamp, requested_database, hostname,)) for requested_database in requested_database_list}
+    database_dict = {requested_database: existing_backups.get(requested_database) or os.path.join(env.postgresql.backup_files_directory, "%s__%s__%s.pg_dump" % (timestamp, requested_database, hostname,)) for requested_database in requested_database_list}
     file_list = ",".join(database_dict.values())
 
     # open a log file
@@ -725,15 +746,15 @@ def deploy_starth(deploy_refspec, **kwargs):
     # We have the lock, let's stop server and backup dbs
     stop()
 
-    # backup the databases
+    # backup databases for which no backup has been supplied
     update_lock_file = run('echo "\n[databases_backups]" >> %s' % (lock_file_path,), quiet=True)
     if update_lock_file.failed:
         print red("ERROR: Unable to update lock file: '%s'" % lock_file_path)
         exit(1)
-
     postgresql.backup('postgres')  # we always backup postgres just in case
     for database_name, backup_file_name in database_dict.items():
-        postgresql.backup(database_name, backup_file_name)
+        if not existing_backups.get(database_name):
+            postgresql.backup(database_name, backup_file_name)
         lock_file_content = '%s = %s' % (database_name, backup_file_name,)
         update_lock_file = run('echo "%s" >> %s' % (lock_file_content, lock_file_path,), quiet=True)
         if update_lock_file.failed:
