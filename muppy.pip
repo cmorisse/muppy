@@ -9,14 +9,13 @@ docutils==0.13.1
 ecdsa==0.13
 Fabric==1.10.2
 idna==2.6
-ikpdb==1.2
 Jinja2==2.6
 livereload==2.5.1
 Markdown==2.6.8
 packaging==16.8
 paramiko==1.16.0
 pathtools==0.1.2
-pudb==2017.1.2
+pudb
 pycrypto==2.6.1
 Pygments==1.6
 pyparsing==2.2.0
