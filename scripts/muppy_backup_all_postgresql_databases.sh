@@ -1,8 +1,7 @@
 #!/bin/bash 
 
-#
 # PostgreSQL Cloud Backup 
-# Copyright (c) 2013, 2014 Cyril MORISSE ( @cmorisse )
+# Copyright (c) 2013-2018 Cyril MORISSE ( @cmorisse )
 # Licence AGPL 3.0
 # 
 # This script:

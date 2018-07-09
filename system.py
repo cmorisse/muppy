@@ -59,8 +59,7 @@ class SystemConfig:
     locale = None
 
 SUPPORTED_VERSIONS = {
-    'ubuntu': ('12.04', '14.04', '16.04',),
-    'debian': ('7',),
+    'ubuntu': ('14.04', '16.04', '18.04', ),
 }
 
 
@@ -110,16 +109,8 @@ def parse_config(config_parser):
         SystemConfig.distribution = 'ubuntu'
 
 
-    # version
-    if config_parser.has_option('system', 'version'):
-        raw_version = config_parser.get('system', 'version')
-        SystemConfig.version = raw_version
-        if raw_version not in SUPPORTED_VERSIONS[SystemConfig.distribution]:
-            print red("Unsupported version: %s for distrib: %s" % (raw_version, raw_distrib,))
-            sys.exit(1)
-    else:
-        SystemConfig.version = '14.04'
-
+    # version is now managed via get_version() that we cannot launch now
+    #SystemConfig.version = get_version()
     return SystemConfig
 
 
@@ -129,7 +120,24 @@ def install_prerequisites():
     backup_user, backup_password = env.user, env.password
     env.user, env.password = env.root_user, env.root_password
     v = get_version()
-    if env.system.version == '16.04':
+    if v == '18.04':
+        sudo('apt-get update --fix-missing')
+        sudo("apt-get install -y libsasl2-dev python-dev libldap2-dev libssl-dev")
+        sudo("apt-get install -y libz-dev gcc")
+        sudo("apt-get install -y libxml2-dev libxslt1-dev")
+        sudo("apt-get install -y libpq-dev")
+        sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev") 
+        sudo("apt-get install -y libffi-dev") 
+        
+        sudo("apt-get install -y libopenjp2-7 libopenjp2-7-dev") 
+        sudo("apt-get install -y libwebp6  libwebp-dev")  
+        sudo("apt-get install -y libtiff-dev")  
+        sudo("apt-get install -y libyaml-dev")
+        sudo("apt-get install -y bzr mercurial git")
+        sudo("apt-get install -y curl htop vim tmux")
+        sudo("apt-get install -y supervisor")
+    
+    elif v == '16.04':
         sudo('apt-get update --fix-missing')
         sudo("apt-get install -y libsasl2-dev python-dev libldap2-dev libssl-dev")
         sudo("apt-get install -y libz-dev gcc")
@@ -144,7 +152,7 @@ def install_prerequisites():
         sudo("apt-get install -y curl htop vim tmux")
         sudo("apt-get install -y supervisor")
     
-    else:
+    elif v == '14.04':
 
         sudo('apt-get update --fix-missing')
         sudo("apt-get install -y curl htop vim tmux")
@@ -159,6 +167,10 @@ def install_prerequisites():
         sudo("apt-get install -y libwebp5  libwebp-dev")  
         sudo("apt-get install -y libtiff-dev")  
         sudo("apt-get install -y libyaml-dev")
+    
+    else:
+        print colors.red("Error: Unsupported OS Version")
+        sys.exit(1)
 
     print colors.green("System prerequisites installed.")
     env.user, env.password = backup_user, backup_password
@@ -172,19 +184,20 @@ def install_openerp_prerequisites():
     env.password = env.root_password
 
     v = get_version()
-    if v == '16.04':
+    if v == '18.04':
+        sudo('apt install -y python virtualenv')
+    elif v == '16.04':
         sudo('apt install -y virtualenv')
-    else:
-
-        # TODO All of this must move to the repository's install.sh
-        # TODO: or add some logic to handle different versions behaviour
-        #sudo('wget https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py')
+    elif v == '14.04':
         sudo('curl https://bootstrap.pypa.io/ez_setup.py -o ez_setup.py')
 
         sudo('python ez_setup.py')
         sudo('rm ez_setup.py')
-
         sudo("easy_install virtualenv==1.11.6")
+    else:
+        print red("Error: Unable to detect OS version")
+        sys.exit(1)
+        
 
 
     print green("OpenERP prerequisites installed.")
@@ -319,7 +332,7 @@ def user_create(username, password, groups="", system_user=False, quiet=False):
     env.user = env.root_user
     env.password = env.root_password
 
-    # creat euser only it it does not exist
+    # create user only it it does not exist
     if not user_search(username):
         if system_user:
             sudo("useradd -m -s /bin/bash --system %s" % (username,), quiet=quiet)
@@ -340,20 +353,22 @@ def user_create(username, password, groups="", system_user=False, quiet=False):
     # We add admin ssh keys to user authorized keys
     sudo("mkdir -p /home/%s/.ssh" % username, user=username)
     for key in SystemConfig.admin_ssh_keys:
-        append("/home/%s/.ssh/authorized_keys" % username, key, use_sudo=True)
-
-    env.user = username
-    env.password = password
+        append("/home/%s/.ssh/authorized_keys" % username, key, 
+               use_sudo=True,)
+    sudo("chown -R %s:%s /home/%s/.ssh" % (username, username, username,))
+        
     # Generate a ssh key for username if it does not exists
-    if not exists('~/.ssh/id_rsa'):
-        run("ssh-keygen -t rsa -N \"\" -f ~/.ssh/id_rsa", quiet=quiet)
+    if not exists('/home/%s/.ssh/id_rsa' % username):
+        sudo("ssh-keygen -t rsa -N \"\" -f /home/%s/.ssh/id_rsa" % username, 
+             user=username,
+             quiet=quiet)
             
     # download generated user key for user
     host_name = get_hostname()
     ssh_key_file_name = 'ssh_keys_temp/%s__%s__id_rsa.pub' % (host_name, username,)
     if os.path.exists(ssh_key_file_name):
         os.remove(ssh_key_file_name)
-    get('/home/%s/.ssh/id_rsa.pub' % (username,), ssh_key_file_name)
+    get('/home/%s/.ssh/id_rsa.pub' % (username,), ssh_key_file_name, use_sudo=True)
     #ssh_key_file = open(ssh_key_file_name)
     #ssh_key_string = ssh_key_file.read()
 
@@ -399,16 +414,23 @@ def get_version(format_for='human'):
     # we use root_user as it is always defined in config even for lxc
     env.user, env.password = env.root_user, env.root_password
 
-    result = run("python -c \"import platform;print(platform.linux_distribution())\"", quiet=True)
+
+    unused_bash_reference = """
+IKIO_OS=`cat /etc/os-release | grep ^ID= | cut -d "=" -f 2`
+IKIO_OS_VERSION=`cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2 | cut -d "\"" -f 2`
+IKIO_OS_VERSION_CODENAME=`cat /etc/os-release | grep VERSION_CODENAME= | cut -d "=" -f 2 | cut -d "\"" -f 2`
+"""
+
+    #result = run('cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2 | cut -d "\\\"" -f 1', quiet=False)
+    #result = run('cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2', quiet=False)
+    result = run("""cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2 | cut -d "\\\"" -f 2""", 
+                 shell=False, 
+                 shell_escape=False,
+                 quiet=True)
     if result.failed:
         return None
-
-    if format_for == 'human':
-        result_as_string = ",".join(eval(result))
-        print(result_as_string)
-        (env.user, env.password,) = env_backup
-        return result_as_string
-
     (env.user, env.password,) = env_backup
+    if format_for=='human':
+        return result
     return eval(result)
 

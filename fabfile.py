@@ -171,6 +171,7 @@ if config_parser.has_section('appserver_repository'):
     env.openerp = _AppserverRepository
 
 
+
 @task
 def mupping(root_user=env.root_user, root_password=env.root_password):
     """Mup"ping": try to run ls over ssh"""
@@ -590,7 +591,7 @@ def install_openerp_application_server():
     
     if env.system.install:
         system.setup_locale()
-
+    system.install_prerequisites()
     system.install_openerp_prerequisites()
     openerp.install_odoo9_html_prerequisites()  # wkhtml2pgdf, node ...
     

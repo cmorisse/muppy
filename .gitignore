@@ -17,6 +17,8 @@ eggs_todelete/
 git_ignored/
 templates
 .vscode/
+.~c9_invoke*
+private/
 
 ; For bootstrap
 bin

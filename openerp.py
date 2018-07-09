@@ -11,6 +11,7 @@ import string
 from muppy_utils import *
 import postgresql
 import supervisor
+import system
 
 """
 Odoo Application Server related tasks
@@ -613,17 +614,38 @@ def install_odoo9_html_prerequisites():
     """To install nodejs, wkhtml2pdf (Experimental!!!)"""
     env.user = env.root_user
     env.password = env.root_password
+    v = system.get_version()
     
-    sudo('apt-get install -y nodejs npm')
-    sudo('ln -fs /usr/bin/nodejs /usr/local/bin/node')  
-    
-    sudo('npm install -g less less-plugin-clean-css')
-    # To check but this seems no longr necessary
-    #sudo('ln -s /usr/local/bin/lessc /usr/bin/lessc')  
+    if v == '18.04':
 
-    sudo('wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb')
-    sudo('apt-get install -y fontconfig libxrender1 libjpeg-turbo8')
-    sudo('dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb')
+        sudo("apt install -y nodejs npm")
+        if not exists('/usr/bin/lessc'):
+            sudo("npm install -g less less-plugin-clean-css")
+            sudo("ln -fs /usr/local/bin/lessc /usr/bin/lessc")
+    
+        # Install wkhtmltopdf only if not installed
+        if not exists('/usr/bin/wkhtmltopdf'):
+            sudo("apt install gdebi-core")
+            sudo("wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb")
+            sudo("wget http://fr.archive.ubuntu.com/ubuntu/pool/main/libp/libpng/libpng12-0_1.2.54-1ubuntu1_amd64.deb")
+            sudo("gdebi --n libpng12-0_1.2.54-1ubuntu1_amd64.deb")
+            sudo("gdebi --n wkhtmltox-0.12.1_linux-trusty-amd64.deb")
+            sudo("ln -s /usr/local/bin/wkhtmltopdf /usr/bin")
+            sudo("ln -s /usr/local/bin/wkhtmltoimage /usr/bin")
+            sudo("rm wkhtmltox-0.12.1_linux-trusty-amd64.deb")
+            sudo("rm libpng12-0_1.2.54-1ubuntu1_amd64.deb")
+
+    elif v in ('16.04', '14.04'):
+        sudo('apt-get install -y nodejs npm')
+        sudo('ln -fs /usr/bin/nodejs /usr/local/bin/node')  
+        
+        sudo('npm install -g less less-plugin-clean-css')
+        # To check but this seems no longr necessary
+        #sudo('ln -s /usr/local/bin/lessc /usr/bin/lessc')  
+    
+        sudo('wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb')
+        sudo('apt-get install -y fontconfig libxrender1 libjpeg-turbo8')
+        sudo('dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb')
 
 @task
 def navigate():

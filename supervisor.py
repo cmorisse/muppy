@@ -151,9 +151,9 @@ def activate():
     """
     env_backup = (env.user, env.password,)
     env.user, env.password = env.root_user, env.root_password
-
+    v = system.get_version()
     # launch supervisor daemon
-    if env.system.distribution == 'ubuntu' and env.system.version == '16.04':
+    if v == '16.04':
         print blue("Launching supervisor daemon..")
         sudo('systemctl start supervisor')
 
