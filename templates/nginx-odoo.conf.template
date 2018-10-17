@@ -1,0 +1,94 @@
+##
+# source: nginx-odoo-http.conf
+# You should look at the following URL's in order to grasp a solid understanding
+# of Nginx configuration files in order to fully unleash the power of Nginx.
+# http://wiki.nginx.org/Pitfalls
+# http://wiki.nginx.org/QuickStart
+# http://wiki.nginx.org/Configuration
+#
+# Generally, you will want to move this file somewhere, and start with a clean
+# file but keep this around for reference. Or just disable in sites-enabled.
+#
+# Please see /usr/share/doc/nginx-doc/examples/ for more detailed examples.
+##
+
+# Default server configuration
+#
+server {
+    listen          80  default_server;
+    server_name     {{ server_dns_name }};
+
+    add_header      Strict-Transport-Security max-age=2592000;
+    
+    rewrite_log on;
+    access_log      /var/log/nginx/default.access.log;
+    error_log       /var/log/nginx/default.error.log;
+
+    # increase proxy buffer to handle some OpenERP web requests
+    proxy_buffers               16 64k;
+    proxy_buffer_size           128k;
+    client_max_body_size        100M;
+    
+
+    # HTTP Compression
+    gzip on;
+    gzip_http_version 1.1;
+    gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_proxied any;
+    gzip_vary on;
+    gzip_disable "MSIE [1-6]\.(?!.*SV1)";
+
+    location / {
+         proxy_pass             {{ odoo_backend_url|default('http://127.0.0.1:8069') }};
+
+         proxy_set_header       Host $host;
+         proxy_set_header       X-Real-IP $remote_addr;
+         proxy_set_header       X-Forward-For $proxy_add_x_forwarded_for;
+
+         # Let the Odoo web service know that we're using HTTPS, otherwise
+         # it will generate URL using http:// and not https://
+         # proxy_set_header       X-Forwarded-Proto https;
+
+         # Timeouts
+         # nginx timeouts are set to very high values (for dev)
+         # so we rely on Odoo timeouts
+         proxy_connect_timeout  3600;
+         proxy_send_timeout     3600;
+         proxy_read_timeout     3600;
+         send_timeout           3600;
+
+         # no redirect at location level
+         proxy_redirect         off;
+
+        # We need this to be able to restore odoo backups via HTTPS
+        # This is not recommended; the best is to connect straight
+        # to 8069 port
+        # client_max_body_size    200M;
+
+        {% if False %}
+        # This is disabled since let's encrypt do it
+        # Redirect all traffic to HTTPS
+        # Uncomment to force HTTPS or leave to allow HTTP
+        rewrite         ^/$ https://$host$request_uri? permanent;
+        rewrite         ^/web$ https://$host$request_uri? permanent;
+        rewrite         ^/web/login$ https://$host$request_uri? permanent;
+        rewrite         ^/web/database/selector$ https://$host$request_uri? permanent;
+        # Required for logo
+        rewrite         ^/.*$ https://$host$request_uri? permanent;
+        {% endif %}
+        
+    }
+
+    location /longpolling/ {
+        proxy_buffering         off;
+        proxy_pass              {{ odoo_backend_long_lolling_url|default('http://127.0.0.1:8072') }};
+    }
+
+    # increase performance for static images    
+    location ~* /web/static/ {
+        proxy_buffering         off;
+        proxy_pass              {{ odoo_backend_url|default('http://127.0.0.1:8069') }};
+    }
+    
+    
+}

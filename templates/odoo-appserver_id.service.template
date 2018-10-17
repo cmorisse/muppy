@@ -1,0 +1,30 @@
+##
+# cf. Google Doc: "Installation service OpenERP via systemd"
+#
+[Unit]
+Description={{process_description}}
+
+{% if requires_postgres %}# Requires postgresql service to run
+Requires=After=postgresql.service
+{% endif %}
+[Service]
+ExecStart=/opt/openerp/{{customer_directory}}/appserver-{{appserver_id}}/bin/start_openerp --workers={{workers}} --max-cron-threads={{max_cron_threads}}
+
+# Restart service after 1 sec if service crashes
+Restart=always
+RestartSec=1            
+
+# Output to syslog
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=Odoo-Appserver-{{appserver_id}}
+
+# Service is owned by adm_user
+User={{adm_user}}
+#Group=<alternate group>
+
+# Force some environment vars
+#Environment=ODOO_ENV=production PORT=1337
+
+[Install]
+WantedBy=multi-user.target
