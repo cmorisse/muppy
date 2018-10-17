@@ -8,10 +8,13 @@ from fabric import colors
 import sys
 import string
 
+print "Loading 'openerp' functions..."
+
 from muppy_utils import *
 import postgresql
 import supervisor
-import system
+import systemd
+from system import get_system_version
 
 """
 Odoo Application Server related tasks
@@ -24,8 +27,11 @@ Odoo Application Server related tasks
 def get_running_service():
     backup = env.user, env.password
     env.user, env.password = env.adm_user, env.adm_password
-
-    if env.supervisor:
+    
+    if env.systemd:
+        return "systemd"    
+    
+    elif env.supervisor:
         programs_status = supervisor.get_programs_status()
         if programs_status:
             running_programs = filter(lambda prog: programs_status[prog]=='RUNNING', programs_status)
@@ -71,7 +77,14 @@ def stop():
 
     running_service = get_running_service()
 
-    if running_service == 'supervisor':
+    if running_service == 'systemd':
+        print colors.blue("INFO: Server is running with 'systemd'")
+        return_value = systemd.stop_services()
+        print colors.green("Systemd managed Odoo services stopped.")
+        env.user, env.password = backup
+        return return_value
+        
+    elif running_service == 'supervisor':
         env.user, env.password = backup
         print colors.blue("INFO: Server is running with 'supervisor'")
         return_value = supervisor.stop_services()
@@ -85,10 +98,6 @@ def stop():
         return True
     print colors.blue("INFO: Running server is '%s'" % running_service)
 
-    if running_service == 'supervisor':
-        supervisor.stop_services()
-        env.user, env.password = backup
-        return True
 
     # we know which server is running, we can stop it
     print colors.blue("INFO: trying to use '/etc/init.d/%s stop' command." % running_service)
@@ -150,13 +159,16 @@ def stop():
 
 def get_active_service():
     """
-    :return: currently active odoo process control: openerp-server | gunicorn-openerp | supervisor
+    :return: currently active odoo process control: openerp-server | gunicorn-openerp | supervisor | systemd
     :rtype: list:str
     """
     backup = (env.user, env.password)
     env.user, env.password = env.adm_user, env.adm_password
 
     ret_value = []
+
+    if env.systemd:
+        return ['systemd']
 
     if supervisor.is_supervisor_active():
         ret_value.append('supervisor')
@@ -190,12 +202,18 @@ def show_active_script():
         print red("ERROR: Several process control scripts are active:")
 
     if active_script:
+        if 'systemd' in active_script:
+            print colors.green("Odoo services are managed by systemd.")
+
         if 'supervisor' in active_script:
             print colors.green("Odoo services are managed by supervisor.")
+            
         if 'openerp-server' in active_script:
             print colors.green("init.d script '/etc/init.d/openerp-server' is active.")
+            
         if 'gunicorn-openerp' in active_script:
             print colors.green("init.d script '/etc/init.d/gunicorn-openerp' is active.")
+            
     else:
         print colors.green("No active process control script (init scripts or supervisor).")
 
@@ -257,6 +275,7 @@ def start():
     env.user, env.password = env.adm_user, env.adm_password
 
     running_service = get_running_service()
+
     if not running_service:
         active_services = get_active_service()
         if len(active_services) > 1:
@@ -284,7 +303,14 @@ def start():
             print colors.red("ERROR: Don't know what to start as there is no init.d active script.  Use set_active_script to define one.")
             sys.exit(1)
     else:
-        if running_service == supervisor:
+        if running_service == 'systemd':
+            print colors.blue("INFO: Server is running with 'systemd'")
+            return_value = systemd.start_services()
+            print colors.green("Systemd managed Odoo services started.")
+            env.user, env.password = backup
+            return return_value
+
+        elif running_service == supervisor:
             print colors.magenta("WARNING: Supervisor managed Odoo services are already running. Nothing done")
         else:
             print colors.magenta("WARNING: OpenERP '/etc/init.d/%s' not started as it's already running." % running_service)
@@ -302,6 +328,10 @@ def buildout():
     with cd(env.openerp.repository.path):
         if exists('bin/buildout'):
             run('bin/buildout')
+
+        elif exists('py3x'):
+            run('py3x/bin/buildout')
+
         else:
             run('py27/bin/buildout')
     print colors.magenta("WARNING: Check log above for errors !")
@@ -314,7 +344,6 @@ def show_current_revision():
     env.user = env.adm_user
     env.password = env.adm_password
     with cd(env.openerp.repository.path):
-        run(env.openerp.repository.get_show_current_tag_command_line())
         run(env.openerp.repository.get_show_current_rev_command_line())
 
 
@@ -336,6 +365,15 @@ def checkout_revision(refspec=None, launch_buildout='True'):
     if result.failed:
         print red("ERROR: Failed to checkout repository '%s' to revision: '%s'." % (env.openerp.repository.path, refspec,))
         sys.exit(128)
+
+    with cd(env.openerp.repository.path):
+        result = run(env.openerp.repository.get_pull_command_line(), quiet=True)
+        if result.failed:
+            if not "You are not currently on a branch" in result.stdout:
+                print red("Error: failed to checkout: %s with error message:" % refspec)
+                print yellow("%s" % result.stdout)
+                sys.exit(1)
+
     print green("Repository '%s' is now at revision '%s'." % (env.openerp.repository.path, refspec))
 
     if launch_buildout.lower() in ('true', 'ok', 'yes', '1'):
@@ -610,30 +648,37 @@ def deploy_commit():
 
 
 @task
-def install_odoo9_html_prerequisites():
+def install_odoo_html_prerequisites():
     """To install nodejs, wkhtml2pdf (Experimental!!!)"""
     env.user = env.root_user
     env.password = env.root_password
-    v = system.get_version()
+    v = get_system_version()['os_version']
     
     if v == '18.04':
+        if env.openerp.appserver_version == "12":
+            # wkhtml2pdf        
+            sudo('apt install -y fontconfig fontconfig-config fonts-dejavu-core libfontconfig1 libfontenc1 libxrender1 x11-common xfonts-75dpi xfonts-base xfonts-encodings xfonts-utils')
+            sudo('wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.bionic_amd64.deb')
+            sudo('dpkg -i wkhtmltox_0.12.5-1.bionic_amd64.deb')
+            sudo('rm wkhtmltox_0.12.5-1.bionic_amd64.deb')
 
-        sudo("apt install -y nodejs npm")
-        if not exists('/usr/bin/lessc'):
-            sudo("npm install -g less less-plugin-clean-css")
-            sudo("ln -fs /usr/local/bin/lessc /usr/bin/lessc")
-    
-        # Install wkhtmltopdf only if not installed
-        if not exists('/usr/bin/wkhtmltopdf'):
-            sudo("apt install gdebi-core")
-            sudo("wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb")
-            sudo("wget http://fr.archive.ubuntu.com/ubuntu/pool/main/libp/libpng/libpng12-0_1.2.54-1ubuntu1_amd64.deb")
-            sudo("gdebi --n libpng12-0_1.2.54-1ubuntu1_amd64.deb")
-            sudo("gdebi --n wkhtmltox-0.12.1_linux-trusty-amd64.deb")
-            sudo("ln -s /usr/local/bin/wkhtmltopdf /usr/bin")
-            sudo("ln -s /usr/local/bin/wkhtmltoimage /usr/bin")
-            sudo("rm wkhtmltox-0.12.1_linux-trusty-amd64.deb")
-            sudo("rm libpng12-0_1.2.54-1ubuntu1_amd64.deb")
+        else:
+            sudo("apt install -y nodejs npm")
+            if not exists('/usr/bin/lessc'):
+                sudo("npm install -g less less-plugin-clean-css")
+                sudo("ln -fs /usr/local/bin/lessc /usr/bin/lessc")
+        
+            # Install wkhtmltopdf only if not installed
+            if not exists('/usr/bin/wkhtmltopdf'):
+                sudo("apt install gdebi-core")
+                sudo("wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb")
+                sudo("wget http://fr.archive.ubuntu.com/ubuntu/pool/main/libp/libpng/libpng12-0_1.2.54-1ubuntu1_amd64.deb")
+                sudo("gdebi --n libpng12-0_1.2.54-1ubuntu1_amd64.deb")
+                sudo("gdebi --n wkhtmltox-0.12.1_linux-trusty-amd64.deb")
+                sudo("ln -s /usr/local/bin/wkhtmltopdf /usr/bin")
+                sudo("ln -s /usr/local/bin/wkhtmltoimage /usr/bin")
+                sudo("rm wkhtmltox-0.12.1_linux-trusty-amd64.deb")
+                sudo("rm libpng12-0_1.2.54-1ubuntu1_amd64.deb")
 
     elif v in ('16.04', '14.04'):
         sudo('apt-get install -y nodejs npm')

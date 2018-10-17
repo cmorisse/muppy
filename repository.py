@@ -89,7 +89,7 @@ class Repository(object):
     def get_show_current_rev_command_line(self):
         """Returns shell command to display info about current revision in repository"""
         if self.dvcs == 'git':
-            return 'git show --format=medium -s HEAD'
+            return 'git show --decorate -s HEAD'
         elif self.dvcs == 'hg':
             return 'hg sum'
 
@@ -113,3 +113,10 @@ class Repository(object):
             return 'git checkout %s' % refspec
         elif self.dvcs == 'hg':  # mercurial
             return 'hg update %s' % refspec
+
+    def get_pull_command_line(self):
+        """Returns a git pull or hg update command line"""
+        if self.dvcs == 'git':
+            return 'git pull'
+        elif self.dvcs == 'hg':  # mercurial
+            return 'hg pull -u'

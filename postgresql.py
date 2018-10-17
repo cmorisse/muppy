@@ -7,6 +7,8 @@ import sys
 import string
 
 from muppy_utils import *
+from system import get_system_version
+
 """
 PostgreSQL related tasks
 """
@@ -47,10 +49,10 @@ TEMPLATE_CFG_SECTION = """
 #activate_dropbox_integration = False
 
 #
-# target_scp_server
+# target_scp_servers
 # If set with a valid muppy hostname that accept ssh passwordless connection,
 # backup script will scp each database backup file to this server.
-# target_scp_server=10.0.0.2
+# target_scp_servers=10.0.0.2
 
 
 """
@@ -68,7 +70,7 @@ def parse_config(config_parser):
     PostgreSQLConfig.backup_retention_period_in_days = (config_parser.has_option('postgresql', 'backup_retention_period_in_days') and config_parser.get('postgresql', 'backup_retention_period_in_days')) or 7
     PostgreSQLConfig.backup_cron_m_h_dom_mon_dow = (config_parser.has_option('postgresql', 'backup_cron_m_h_dom_mon_dow') and config_parser.get('postgresql', 'backup_cron_m_h_dom_mon_dow')) or "00 2 * * *"
     PostgreSQLConfig.activate_dropbox_integration = (config_parser.has_option('postgresql', 'activate_dropbox_integration') and config_parser.get('postgresql', 'activate_dropbox_integration')) or False
-    PostgreSQLConfig.target_scp_server = (config_parser.has_option('postgresql', 'target_scp_server') and config_parser.get('postgresql', 'target_scp_server')) or False
+    PostgreSQLConfig.target_scp_servers = (config_parser.has_option('postgresql', 'target_scp_servers') and config_parser.get('postgresql', 'target_scp_servers')) or False
 
     PostgreSQLConfig.backup_files_directory = os.path.join(PostgreSQLConfig.backup_root_directory, 'postgresql')
     PostgreSQLConfig.backup_scripts_directory = os.path.join(PostgreSQLConfig.backup_root_directory, 'scripts')
@@ -330,7 +332,7 @@ def install_backup_script():
         'backup_email_recipients': env.postgresql.backup_email_recipients,
         'backup_retention_period_in_days': env.postgresql.backup_retention_period_in_days,
         'activate_dropbox_integration': env.postgresql.activate_dropbox_integration,
-        'target_scp_server': env.postgresql.target_scp_server,
+        'target_scp_servers': env.postgresql.target_scp_servers,
         'pg_user': env.db_user,
         'pg_password': env.db_password,
     }
@@ -367,32 +369,49 @@ def install(version="default"):
     env.user, env.password = env.root_user, env.root_password
     if version == 'default':
         version = PostgreSQLConfig.version
-
-    if version == '9.4':
-        if not exists('/etc/apt/sources.list.d/pgdg.list', use_sudo=True):
-            append('/etc/apt/sources.list.d/pgdg.list',
-                   'deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg main',
-                   use_sudo=True)
-            sudo("wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add - ")
-            sudo('sudo apt-get update --fix-missing')
-
-        sudo('apt-get install -y postgresql-9.4')
     
-    elif version == '9.5':
-        if env.system.distribution == 'ubuntu':
-            if env.system.version == '16.04':
-                sudo('sudo apt-get update --fix-missing')                
-                sudo('apt-get install -y postgresql-9.5')
-            
-            elif env.system.version == '14.04':
-                print red("PostgreSQL 9.5 installation on Ubuntu '%s' is not implemented. Installation aborted." % env.system.version)
+    full_version = get_system_version()
+    system_version = full_version['os_version']
+    if system_version == "18.04":
+        result = sudo('grep "apt.postgresql.org" /etc/apt/sources.list.d/pgdg.list', quiet=True)
+        if result.return_code:
+            print cyan("Adding PostgreSQL repository to apt sources list.")
+            sudo('wget -q https://www.postgresql.org/media/keys/ACCC4CF8.asc -O - | sudo apt-key add -')
+            sudo('echo \"deb http://apt.postgresql.org/pub/repos/apt/ %s-pgdg main\" > /etc/apt/sources.list.d/pgdg.list' % full_version['os_version_codename'])
+            sudo('apt update')
+        
+        if version=='default':
+            version = "10"
+
+        print cyan("Installation PostgreSQL %s from PostgreSQL official repository." % version)
+        sudo("apt install -y postgresql-%s postgresql-contrib-%s" % (version, version,))
+
+    else:
+        if version == '9.4':
+            if not exists('/etc/apt/sources.list.d/pgdg.list', use_sudo=True):
+                append('/etc/apt/sources.list.d/pgdg.list',
+                       'deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg main',
+                       use_sudo=True)
+                sudo("wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add - ")
+                sudo('sudo apt-get update --fix-missing')
+    
+            sudo('apt-get install -y postgresql-9.4')
+        
+        elif version == '9.5':
+            if env.system.distribution == 'ubuntu':
+                if env.system.version == '16.04':
+                    sudo('sudo apt-get update --fix-missing')                
+                    sudo('apt-get install -y postgresql-9.5')
+                
+                elif env.system.version == '14.04':
+                    print red("PostgreSQL 9.5 installation on Ubuntu '%s' is not implemented. Installation aborted." % env.system.version)
+                    exit(128)
+            else:
+                print red("Dont't know how to install PostgreSQL on '%s'. Installation aborted.")
                 exit(128)
         else:
-            print red("Dont't know how to install PostgreSQL on '%s'. Installation aborted.")
-            exit(128)
-    else:
-        sudo('sudo apt-get update --fix-missing')
-        sudo('apt-get install -y postgresql')
+            sudo('sudo apt-get update --fix-missing')
+            sudo('apt-get install -y postgresql')
 
     env.user, env.password = env_backup
     print green("PosgreSQL server and client installed.")

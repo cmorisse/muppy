@@ -18,7 +18,7 @@ BACKUP_RETENTION_PERIOD_ON_LOCAL_SERVER=_@@backup_retention_period_in_days
 PGUSER='_@@pg_user'
 PGPASSWORD='_@@pg_password'
 USE_DROPBOX=_@@activate_dropbox_integration
-TARGET_SCP_SERVER=_@@target_scp_server
+TARGET_SCP_SERVERS=_@@target_scp_server
 
 # 
 # retrieve db list
@@ -58,7 +58,7 @@ do
 	BACKUP_FILE_SIZE=`du $BACKUP_PATH/$BACKUP_FILENAME | sed 's:\t/.*pg_dump::'`
 	echo "Backup file size = $BACKUP_FILE_SIZE Ko" >> $BACKUP_PATH/$BACKUP_LOG_FILENAME
 
-	if [ ! -z $TARGET_SCP_SERVER ] ; then
+	if [ ! -z $TARGET_SCP_SERVERS ] ; then
 		# Id defined copy backup file to scp_target_server.
 		# Note that target server must muppy backup folders hierarchy.
 		scp $BACKUP_PATH/$BACKUP_FILENAME $TARGET_SCP_SERVER:$BACKUP_PATH/$BACKUP_FILENAME >> $BACKUP_PATH/$BACKUP_LOG_FILENAME

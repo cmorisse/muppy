@@ -12,6 +12,8 @@ from muppy_utils import *
 System (server) settings and commands
 """
 
+print "Loading 'system' functions..."
+
 TEMPLATE_CFG_SECTION = """
 [system]
 #
@@ -121,21 +123,23 @@ def install_prerequisites():
     env.user, env.password = env.root_user, env.root_password
     v = get_version()
     if v == '18.04':
-        sudo('apt-get update --fix-missing')
-        sudo("apt-get install -y libsasl2-dev python-dev libldap2-dev libssl-dev")
-        sudo("apt-get install -y libz-dev gcc")
-        sudo("apt-get install -y libxml2-dev libxslt1-dev")
-        sudo("apt-get install -y libpq-dev")
-        sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev") 
-        sudo("apt-get install -y libffi-dev") 
-        
-        sudo("apt-get install -y libopenjp2-7 libopenjp2-7-dev") 
-        sudo("apt-get install -y libwebp6  libwebp-dev")  
-        sudo("apt-get install -y libtiff-dev")  
-        sudo("apt-get install -y libyaml-dev")
-        sudo("apt-get install -y bzr mercurial git")
-        sudo("apt-get install -y curl htop vim tmux")
-        sudo("apt-get install -y supervisor")
+        sudo('apt update')
+        sudo('apt upgrade -y')
+        sudo('apt install -y libsasl2-dev python-dev libldap2-dev libssl-dev')
+        sudo('apt install -y libz-dev gcc')
+        sudo('apt install -y libxml2-dev libxslt1-dev')
+        sudo('apt install -y libbz2-dev libreadline-dev libsqlite3-dev zlib1g-dev')
+        sudo('apt install -y libpq-dev')
+        sudo('apt install -y libldap2-dev libsasl2-dev')
+        sudo('apt install -y libjpeg-dev libfreetype6-dev liblcms2-dev')
+        sudo('apt install -y libopenjp2-7 libopenjp2-7-dev')
+        sudo('apt install -y libwebp6  libwebp-dev')
+        sudo('apt install -y libtiff-dev')
+        sudo('apt install -y libffi-dev')
+        sudo('apt install -y libyaml-dev')
+        sudo('apt install -y python3-dev python3-venv')
+        sudo('apt install -y bzr mercurial git')
+        sudo('apt install -y curl htop vim tmux')
     
     elif v == '16.04':
         sudo('apt-get update --fix-missing')
@@ -151,6 +155,9 @@ def install_prerequisites():
         sudo("apt-get install -y bzr mercurial git")
         sudo("apt-get install -y curl htop vim tmux")
         sudo("apt-get install -y supervisor")
+
+        sudo('apt install -y virtualenv')
+
     
     elif v == '14.04':
 
@@ -167,6 +174,14 @@ def install_prerequisites():
         sudo("apt-get install -y libwebp5  libwebp-dev")  
         sudo("apt-get install -y libtiff-dev")  
         sudo("apt-get install -y libyaml-dev")
+
+        sudo('curl https://bootstrap.pypa.io/ez_setup.py -o ez_setup.py')
+
+        sudo('python ez_setup.py')
+        sudo('rm ez_setup.py')
+        sudo("easy_install virtualenv==1.11.6")
+
+
     
     else:
         print colors.red("Error: Unsupported OS Version")
@@ -178,31 +193,6 @@ def install_prerequisites():
 
 
 @task
-def install_openerp_prerequisites():
-    """Install all ubuntu packages required for OpenERP Server (run as root_user)"""
-    env.user = env.root_user
-    env.password = env.root_password
-
-    v = get_version()
-    if v == '18.04':
-        sudo('apt install -y python virtualenv')
-    elif v == '16.04':
-        sudo('apt install -y virtualenv')
-    elif v == '14.04':
-        sudo('curl https://bootstrap.pypa.io/ez_setup.py -o ez_setup.py')
-
-        sudo('python ez_setup.py')
-        sudo('rm ez_setup.py')
-        sudo("easy_install virtualenv==1.11.6")
-    else:
-        print red("Error: Unable to detect OS version")
-        sys.exit(1)
-        
-
-
-    print green("OpenERP prerequisites installed.")
-
-@task
 def setup_locale(locale=None):
     """
     :[[locale]] - Setup locale defined by [[locale]] parameter or the locale defined in [system] section of muppy cfg file.
@@ -212,12 +202,24 @@ def setup_locale(locale=None):
     if not locale:
         print colors.red("ERROR: Missing required locale parameter.")
         sys.exit(1)
+    language = locale.split('.')[0]
 
     backup_user, backup_password = env.user, env.password
     env.user, env.password = env.root_user, env.root_password
+    version = get_version()
+    
+    if version == '18.04':
+        ret_val = sudo("apt install -y language-pack-%s" % (language[:2],), quiet=False, warn_only=True)
+        if ret_val.failed:
+            print colors.red("ERROR: Unable to install language pack: '%s'." % language[:2])
+            sys.exit(1)
+            
+        ret_val = sudo('update-locale LANG="%s" LANGUAGE="%s" LC_ALL="%s"' % (locale, locale, locale,), quiet=False, warn_only=True)
+        if ret_val.failed:
+            print colors.red("ERROR: Unable to update-locale")
+            sys.exit(1)
 
-    if get_version() == '16.04':
-        language = locale.split('.')[0]
+    elif version== '16.04':
         ret_val = sudo("locale-gen %s %s" % (language, locale,), quiet=False, warn_only=True)
         if ret_val.failed:
             print colors.red("ERROR: Unable to generate locale '%s'." % locale)
@@ -258,11 +260,21 @@ def generate_config_template():
 @task
 def upgrade():
     """Update and upgrade system (with apt-get)"""
+    env_backup = (env.user, env.password,)
     env.user = env.root_user
     env.password = env.root_password
 
-    sudo("apt-get update --fix-missing")
-    sudo("apt-get upgrade -y")
+    version = get_version()
+    if version == "18.04":
+        sudo("apt-get update --fix-missing")
+        sudo('DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade')
+
+    else:
+        sudo("apt-get update --fix-missing")
+        sudo("apt-get upgrade -y")
+    print yellow("Rebooting server")
+    reboot()
+    (env.user, env.password,) = env_backup
     print green("System updated and upgraded")
 
 
@@ -407,8 +419,7 @@ def user_set_ssh_authorized_keys(username, password, ssh_keys, quiet=False):
     (env.user, env.password) = env_backup
     return True
 
-@task
-def get_version(format_for='human'):
+def get_system_version(format_for='human'):
     """Retrieve system version"""
     env_backup = (env.user, env.password,)
     # we use root_user as it is always defined in config even for lxc
@@ -421,16 +432,36 @@ IKIO_OS_VERSION=`cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2 | cut 
 IKIO_OS_VERSION_CODENAME=`cat /etc/os-release | grep VERSION_CODENAME= | cut -d "=" -f 2 | cut -d "\"" -f 2`
 """
 
-    #result = run('cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2 | cut -d "\\\"" -f 1', quiet=False)
-    #result = run('cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2', quiet=False)
-    result = run("""cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2 | cut -d "\\\"" -f 2""", 
-                 shell=False, 
-                 shell_escape=False,
-                 quiet=True)
-    if result.failed:
+    os_name = run("""cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2""", 
+                  shell=False, 
+                  shell_escape=False,
+                  quiet=True)
+
+    os_version = run("""cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2 | cut -d "\\\"" -f 2""", 
+                     shell=False, 
+                     shell_escape=False,
+                     quiet=True)
+    if os_version.failed:
+        return None
+    os_version_codename = run("""cat /etc/os-release | grep VERSION_CODENAME= | cut -d "=" -f 2 | cut -d "\\\"" -f 2""", 
+                              shell=False, 
+                              shell_escape=False,
+                              quiet=True)
+    if os_version.failed:
         return None
     (env.user, env.password,) = env_backup
-    if format_for=='human':
-        return result
-    return eval(result)
 
+    result = {
+        "os_name": os_name,
+        "os_version": os_version,
+        "os_version_codename": os_version_codename,
+    }
+    return result
+
+
+
+
+@task
+def get_version(format_for='human'):
+    """Retrieve system version. Simplified format for legacy calls"""
+    return get_system_version(format_for)['os_version']

@@ -15,14 +15,15 @@ import muppy_utils
 from bitbucket import BitbucketRepository
 from gitlab_driver import GitlabRepository
 
-from muppy_magento import *
+import system  # And no system is not a python module ; it's a muppy one
 import vagrant
 import postgresql
+import supervisor
 import openerp
 import security
-import system  # And no system is not a python module ; it's a muppy one
 import lxc
-import supervisor
+import systemd
+import nginx
 
 __version__ = '0.3'
 
@@ -70,6 +71,7 @@ env.db_user = (config_parser.has_option('env', 'db_user') and config_parser.get(
 env.db_password = (config_parser.has_option('env', 'db_password') and config_parser.get('env', 'db_password')) or env.adm_password
 env.db_host = (config_parser.has_option('env', 'db_host') and config_parser.get('env', 'db_host')) or 'localhost'
 env.db_port = (config_parser.has_option('env', 'db_port') and config_parser.get('env', 'db_port')) or '5432'
+env.http_port = (config_parser.has_option('env', 'http_port') and config_parser.get('env', 'http_port')) or '8069'
 
 env.customer_directory = (config_parser.has_option('env', 'customer_directory') and config_parser.get('env', 'customer_directory')) or 'muppy'
 
@@ -83,35 +85,22 @@ env.muppy_buffer_directory = (config_parser.has_option('env', 'muppy_buffer_dire
 env.test_database_name = (config_parser.has_option('env', 'test_database_name') and config_parser.get('env', 'test_database_name')) or env.customer_directory + '_dev'
 env.addons_list = (config_parser.has_option('env', 'addons_list') and config_parser.get('env', 'addons_list')) or 'all'
 
-
-#
-# Magento
-if config_parser.has_section('magento'):
-    env.magento = magento_parse_config(config_parser)
-#
-# Vagrant
-if config_parser.has_section('vagrant'):
-    env.vagrant = vagrant.parse_config(config_parser)
-
-#
-# PostgreSQL
-env.postgresql = postgresql.parse_config(config_parser)
-
-#
-# Security
-env.security = security.parse_config(config_parser)
-
 #
 # system
 env.system = system.parse_config(config_parser)
 
 #
-# lxc
-env.lxc = lxc.parse_config(config_parser)
+# Vagrant
+if config_parser.has_section('vagrant'):
+    env.vagrant = vagrant.parse_config(config_parser)
 
-#
-# supervisor
+env.postgresql = postgresql.parse_config(config_parser)
+env.security = security.parse_config(config_parser)
+env.lxc = lxc.parse_config(config_parser)
 env.supervisor = supervisor.parse_config(config_parser)
+env.systemd = systemd.parse_config(config_parser)
+env.nginx = nginx.parse_config(config_parser)
+
 
 
 # TODO: eval root, adm, pg, postgres, user and password from os.environ
@@ -127,7 +116,10 @@ if config_parser.has_section('appserver_repository'):
         print red("Error: Unsupported value for appserver_repository.server_type : %s" % _AppserverRepository.server_type)
         exit(-1)
     _AppserverRepository.appserver_url = (config_parser.has_option('appserver_repository', 'appserver_url') and config_parser.get('appserver_repository', 'appserver_url')) or "git git@bitbucket.org:cmorisse/appserver-templatev7.git"
-
+    
+    _AppserverRepository.appserver_version = (config_parser.has_option('appserver_repository', 'appserver_version') and config_parser.get('appserver_repository', 'appserver_version')) or None
+    assert _AppserverRepository.appserver_version in ('12', None), "Unsupported value for appserver_version"
+    
     str_to_eval = config_parser.get('appserver_repository', 'user')
     _AppserverRepository.user = eval(str_to_eval, {'os': os})
 
@@ -251,45 +243,6 @@ def sys_install_vmware_tools():
 #
 # System related tasks
 #
-
-
-@task
-def sys_install_openerp_prerequisites():
-    """Install all ubuntu packages required for OpenERP Server (run as root_user)"""
-    env.user = env.root_user
-    env.password = env.root_password
-
-    v = system.get_version()
-
-    # TODO All of this must move to the repository install.sh
-    # TODO: or add some logic to handle different versions behaviour
-    sudo('curl https://bootstrap.pypa.io/ez_setup.py -o ez_setup.py')
-    
-    if end.odoo_version == '7':
-        sudo('python ez_setup.py --version=21.2.1')
-    else:
-        sudo('python ez_setup.py')
-            
-    sudo('rm ez_setup.py')
-
-    sudo("easy_install virtualenv==1.11.6")
-
-    sudo("apt-get install -y python-dev libz-dev gcc")
-    sudo("apt-get install -y libxml2-dev libxslt1-dev")
-    sudo("apt-get install -y libpq-dev")
-    sudo("apt-get install -y libldap2-dev libsasl2-dev")
-    sudo("apt-get install -y libjpeg-dev libfreetype6-dev liblcms2-dev") 
-    # TODO: Rework why do I need it
-    #sudo("apt-get liblcms1-dev")
-    sudo("apt-get install -y libwebp5  libwebp-dev")  
-    sudo("apt-get install -y libtiff-dev")  
-    sudo("apt-get install -y libyaml-dev")
-    sudo("apt-get install -y bzr mercurial git")
-    sudo("apt-get install -y curl htop vim tmux")
-    
-    supervisor.install()
-
-    print green("OpenERP prerequisites installed.")
 
 def get_sshkey_name():
     return 'muppy:%s@%s' % (env.adm_user, system.get_hostname(),)
@@ -458,7 +411,13 @@ extends = %s
 options.admin_passwd = %s
 options.db_user = %s
 options.db_password = %s
-EOF""" % (buildout_cfg_path, base_template_name, env.openerp_admin_password, env.db_user, env.db_password,)
+options.http_port = %s
+EOF""" % (buildout_cfg_path, 
+          base_template_name, 
+          env.openerp_admin_password, 
+          env.db_user, 
+          env.db_password,
+          env.http_port,)
 
     run(generate_buildout_content_cmd)
     (env.user, env.password,) = env_backup 
@@ -514,8 +473,12 @@ def openerp_bootstrap_appserver(adm_user=env.adm_user, adm_password=env.adm_pass
     appserver_path = '%s/%s/' % (env.customer_path, _AppserverRepository.repository.destination_directory, )
 
     with cd(appserver_path):
-        sudo('./install.sh dependencies')
-        run('./install.sh openerp')
+        if exists('./obinstall.sh'):
+            sudo('./obinstall.sh dependencies')
+            run('./obinstall.sh odoo')
+        else:
+            sudo('./install.sh dependencies')
+            run('./install.sh openerp')
     print green("Appserver installed.")
 
 
@@ -581,105 +544,95 @@ def openerp_remove_init_script_links(root_user=env.root_user, root_password=env.
 
     print green("OpenERP init scripts removed.")
 
-@task
-def install_openerp_application_server():
-    """Install an OpenERP application server (without database)."""
 
-    if not _AppserverRepository.enabled:
-        print colors.red("ERROR: OpenERP configuration missing. Installation aborted.")
-        sys.exit(1)
-    
-    if env.system.install:
-        system.setup_locale()
-    system.install_prerequisites()
-    system.install_openerp_prerequisites()
-    openerp.install_odoo9_html_prerequisites()  # wkhtml2pgdf, node ...
-    
-    sys_create_openerp_user()
-    
-    sys_create_customer_directory()
-    sys_create_log_directory()
-    sys_create_backup_directory()
-    sys_create_muppy_transactions_directory()
-    sys_create_buffer_directory()
+def is_activated(phases, idx):
+    if idx < len(phases):
+        return eval(phases[idx])
+    return True
 
-    
-    openerp_clone_appserver()
-    openerp_bootstrap_appserver()
-    
-    supervisor.activate()
-    
-    reboot()
 
 @task
-def install_openerp_standalone_server(phase0='True', phase1='True', phase2='True', phase3='True', phase4='True', 
-                                      phase5='True', phase6='True', phase7='True'):
+def install_openerp_standalone_server(phases='', skip_postgres="False"):
     """Install a complete OpenERP appserver (including database server). You must update/upgrade system before manually
     """
-    
     if not _AppserverRepository.enabled:
         print colors.red("ERROR: OpenERP configuration missing. Installation aborted.")
         sys.exit(1)
 
-    phase0 = eval(phase0)
-    phase1 = eval(phase1)
-    phase2 = eval(phase2)
-    phase3 = eval(phase3)
-    phase4 = eval(phase4)
-    phase5 = eval(phase5)
-    phase6 = eval(phase6)
-    phase7 = eval(phase7)
+    skip_postgres = eval(skip_postgres)
 
-    system.install_prerequisites()    
-
-
-    # Install locale !
-    if phase0:
-        print blue("Beginning Phase 0")
+    phase = 0
+    if is_activated(phases, phase):
+        print cyan("Beginning Phase %s - Setup locale." % phase)
         if env.system.install:
             system.setup_locale()
 
-    # Install PostgreSQL
-    if phase1:
-        print blue("Beginning Phase 1")
-        postgresql.install()
-        pg_create_openerp_user()
+    
+    phase += 1
+    if is_activated(phases, phase):
+        print cyan("Beginning Phase %s - Install system prerequisites." % phase)
+        system.install_prerequisites()    
 
-    # Install System packages required for OpenERP
-    if phase2:
-        print blue("Beginning Phase 2") 
-        system.install_openerp_prerequisites()
-        openerp.install_odoo9_html_prerequisites()  # wkhtml2pgdf, node ...
+    phase += 1
+    if skip_postgres:
+        print yellow("Skipping PostgreSQL installation.")
+    else:
+        if is_activated(phases, phase):
+            print cyan("Beginning Phase %s - PostgreSQL installation." % phase)
+            postgresql.install()
+            pg_create_openerp_user()
 
-    # Create OpenERP admin user
-    if phase3:
-        print blue("Beginning Phase 3")
+    phase += 1
+    if is_activated(phases, phase):
+        print cyan("Beginning Phase %s - Odoo prerequisites (wkhtml2pdf, node, ...)." % phase)
+        openerp.install_odoo_html_prerequisites()  # wkhtml2pgdf, node ...
+
+    phase += 1
+    if is_activated(phases, phase):
+        print cyan("Beginning Phase %s - Odoo user creation." % phase)
         sys_create_openerp_user()
 
-    # Create directories (/opt/openerp/customer, /var/log)
-    if phase4:
-        print blue("Beginning Phase 4")        
+    phase += 1
+    if is_activated(phases, phase):
+        print cyan("Beginning Phase %s - Creating /opt directory structure." % phase)
         sys_create_customer_directory()
         sys_create_log_directory()
         sys_create_backup_directory()
         sys_create_muppy_transactions_directory()
         sys_create_buffer_directory()
 
-    if phase5:
-        print blue("Beginning Phase 5")
+    phase += 1
+    if is_activated(phases, phase):
+        print cyan("Beginning Phase %s - Cloning appserver." % phase)
         openerp_clone_appserver()
 
-    if phase6:
-        print blue("Beginning Phase 6")
+    phase += 1
+    if is_activated(phases, phase):
+        print cyan("Beginning Phase %s - Appserver buildout." % phase)
         openerp_bootstrap_appserver()
         
-    # Setup services scripts
-    if phase7:
-        print blue("Beginning Phase 7")
-        supervisor.install()        
-        supervisor.activate()
+    phase += 1
+    if is_activated(phases, phase):
+        print cyan("Beginning Phase %s - server process setup." % phase)
 
+        if env.systemd:
+            systemd.activate()
+            
+        elif env.supervisor:
+            supervisor.install()        
+            supervisor.activate()
+        else:
+            print red("Error: Not implemented")
+
+    print yellow("Rebooting")
     reboot()
+
+
+@task
+def install_openerp_application_server():
+    """Install an OpenERP application server (without database)."""
+    install_openerp_standalone_server(phases='', skip_postgres="True")
+
 
 @task
 def openerp_archive_appserver(root_user=env.root_user, root_password=env.root_password):

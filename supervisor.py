@@ -7,6 +7,8 @@ import sys
 import string
 
 from muppy_utils import *
+from system import get_system_version
+
 """
 Supervisor related tasks
 """
@@ -151,7 +153,7 @@ def activate():
     """
     env_backup = (env.user, env.password,)
     env.user, env.password = env.root_user, env.root_password
-    v = system.get_version()
+    v = get_system_version()
     # launch supervisor daemon
     if v == '16.04':
         print blue("Launching supervisor daemon..")

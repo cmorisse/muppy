@@ -17,12 +17,14 @@ class GitlabRepository(Repository):
 
         #self.gitlab_project_id = None
         self.gitlab_project = None
-        projects = self.gitlab.projects.list(search=self.name)
         
-        for project in projects:
-            if project.path_with_namespace == "%s/%s" % (self.owner, self.name,):
-                self.gitlab_project = project
-                #self.gitlab_project_id = project.id
+        if True:  # New API
+            self.gitlab_project = self.gitlab.projects.get("%s/%s" % (self.owner, self.name,))
+        else:
+            projects = self.gitlab.projects.list(search=self.name)
+            for project in projects:
+                if project.path_with_namespace == "%s/%s" % (self.owner, self.name,):
+                    self.gitlab_project = project
 
         if not self.gitlab_project:
             raise Exception("Gitlab Error", "Unable to find Gitlab repository: %s" % self.clone_url)
