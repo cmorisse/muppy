@@ -48,10 +48,14 @@ if config_parser.has_option('env', 'appserver_id'):
 else:
     print red("ERROR: missing appserver_id required entry.")
 
-if config_parser.has_option('env', 'odoo_version'):
-    env.odoo_version = config_parser.get('env', 'odoo_version')
+if config_parser.has_option('env', 'appserver_version'):
+    env.appserver_version = int(config_parser.get('env', 'appserver_version'))
+    if env.appserver_version < 7: 
+        print red("ERROR: Unable to detect appserver_version.")
+        sys.exit(1)
 else:
-    env.odoo_version = '7'
+    print red("ERROR: [env] appserver_version is required (eg. appserver_version=8) !")
+    sys.exit(1)
 
 if config_parser.has_option('env', 'linux_distribution'):
     env.linux_distribution = config_parser.get('env', 'linux_distribution')
@@ -60,6 +64,11 @@ else:
 
 if config_parser.has_option('env', 'hosts'):
     env.hosts = config_parser.get('env', 'hosts').split(',')
+if config_parser.has_option('env', 'fqdn_hostname'):
+    env.fqdn_hostname = config_parser.get('env', 'fqdn_hostname').strip()
+else:
+    env.fqdn_hostname = None
+    
 env.root_user = config_parser.get('env', 'root_user')
 env.root_password = config_parser.get('env', 'root_password')
 
@@ -69,19 +78,50 @@ env.adm_user_is_sudoer = (config_parser.has_option('env', 'adm_user_is_sudoer') 
 
 env.db_user = (config_parser.has_option('env', 'db_user') and config_parser.get('env', 'db_user')) or env.adm_user
 env.db_password = (config_parser.has_option('env', 'db_password') and config_parser.get('env', 'db_password')) or env.adm_password
-env.db_host = (config_parser.has_option('env', 'db_host') and config_parser.get('env', 'db_host')) or 'localhost'
+env.db_host = (config_parser.has_option('env', 'db_host') and config_parser.get('env', 'db_host')) or False
 env.db_port = (config_parser.has_option('env', 'db_port') and config_parser.get('env', 'db_port')) or '5432'
+env.dbfilter = (config_parser.has_option('env', 'dbfilter') and config_parser.get('env', 'dbfilter')) or ''
 env.http_port = (config_parser.has_option('env', 'http_port') and config_parser.get('env', 'http_port')) or '8069'
+env.longpolling_port = (config_parser.has_option('env', 'longpolling_port') and config_parser.get('env', 'longpolling_port')) or False
+
+# data_dir
+# allow to customize odoo --datd-dir parameter
+# data_dir = /opt/odoo/filestore/
+# default is ~/.local/share/Odoo/filestore
+env.data_dir = (
+        config_parser.has_option('env', 'data_dir') 
+    and config_parser.get('env', 'data_dir')
+) or '/home/%s/.local/share/Odoo/filestore' % (env.adm_user)
 
 env.customer_directory = (config_parser.has_option('env', 'customer_directory') and config_parser.get('env', 'customer_directory')) or 'muppy'
 
-env.customer_path = "/opt/openerp/%s" % (env.customer_directory,)
+# Base Directory 
+# Muppy base directory for installation
+# base_directory=/opt/openerp if appserver_version < 10 else /opt/odoo)
+# dont use comma in cfg file
+env.base_directory = (
+        config_parser.has_option('env', 'base_directory') 
+    and config_parser.get('env', 'base_directory')
+) or None
+if not env.base_directory:
+    if env.appserver_version > 9:
+        env.base_directory = "/opt/odoo"
+    else:
+        env.base_directory = "/opt/openerp"
+    
+env.customer_path = "%s/%s" % (env.base_directory, env.customer_directory,)
 
 env.openerp_admin_password = (config_parser.has_option('env', 'openerp_admin_password') and config_parser.get('env', 'openerp_admin_password')) or 'admin'
 
-env.backup_directory = (config_parser.has_option('env', 'backup_directory') and config_parser.get('env', 'backup_directory')) or '/opt/openerp/backups'
-env.muppy_transactions_directory = (config_parser.has_option('env', 'muppy_transactions_directory') and config_parser.get('env', 'muppy_transactions_directory')) or '/opt/openerp/muppy_transactions'
-env.muppy_buffer_directory = (config_parser.has_option('env', 'muppy_buffer_directory') and config_parser.get('env', 'muppy_buffer_directory')) or '/opt/openerp/muppy_buffer'
+env.backup_directory = (config_parser.has_option('env', 'backup_directory') and config_parser.get('env', 'backup_directory')) or ('%s/backups' % env.base_directory)
+env.muppy_transactions_directory = (
+        config_parser.has_option('env', 'muppy_transactions_directory') 
+    and config_parser.get('env', 'muppy_transactions_directory')
+) or ('%s/muppy_transactions' % env.base_directory)
+env.muppy_buffer_directory = (
+        config_parser.has_option('env', 'muppy_buffer_directory') 
+    and config_parser.get('env', 'muppy_buffer_directory')
+) or '%s/muppy_buffer' % env.base_directory
 env.test_database_name = (config_parser.has_option('env', 'test_database_name') and config_parser.get('env', 'test_database_name')) or env.customer_directory + '_dev'
 env.addons_list = (config_parser.has_option('env', 'addons_list') and config_parser.get('env', 'addons_list')) or 'all'
 
@@ -116,9 +156,6 @@ if config_parser.has_section('appserver_repository'):
         print red("Error: Unsupported value for appserver_repository.server_type : %s" % _AppserverRepository.server_type)
         exit(-1)
     _AppserverRepository.appserver_url = (config_parser.has_option('appserver_repository', 'appserver_url') and config_parser.get('appserver_repository', 'appserver_url')) or "git git@bitbucket.org:cmorisse/appserver-templatev7.git"
-    
-    _AppserverRepository.appserver_version = (config_parser.has_option('appserver_repository', 'appserver_version') and config_parser.get('appserver_repository', 'appserver_version')) or None
-    assert _AppserverRepository.appserver_version in ('12', None), "Unsupported value for appserver_version"
     
     str_to_eval = config_parser.get('appserver_repository', 'user')
     _AppserverRepository.user = eval(str_to_eval, {'os': os})
@@ -245,6 +282,8 @@ def sys_install_vmware_tools():
 #
 
 def get_sshkey_name():
+    if env.fqdn_hostname:
+        return 'muppy:%s@%s' % (env.adm_user, env.fqdn_hostname,)
     return 'muppy:%s@%s' % (env.adm_user, system.get_hostname(),)
 
 
@@ -409,16 +448,23 @@ def generate_buildout_cfg(buildout_cfg_path, base_template_name="buildout.cfg.te
 extends = %s
 [openerp]
 options.admin_passwd = %s
+options.db_host = %s
+options.db_port = %s
 options.db_user = %s
 options.db_password = %s
+options.dbfilter = %s
 options.http_port = %s
+options.longpolling_port = %s
 EOF""" % (buildout_cfg_path, 
           base_template_name, 
           env.openerp_admin_password, 
+          env.db_host if env.db_host != 'localhost' else False,
+          env.db_port or '5432',
           env.db_user, 
           env.db_password,
-          env.http_port,)
-
+          env.dbfilter,
+          env.http_port,
+          env.longpolling_port)
     run(generate_buildout_content_cmd)
     (env.user, env.password,) = env_backup 
     return
@@ -566,31 +612,41 @@ def install_openerp_standalone_server(phases='', skip_postgres="False"):
         print cyan("Beginning Phase %s - Setup locale." % phase)
         if env.system.install:
             system.setup_locale()
+    else:
+        print yellow("Skipping Phase %s - Setup locale." % phase)
 
-    
     phase += 1
     if is_activated(phases, phase):
         print cyan("Beginning Phase %s - Install system prerequisites." % phase)
         system.install_prerequisites()    
+    else:
+        print yellow("Skipping Phase %s - Install system prerequisites." % phase)
 
     phase += 1
     if skip_postgres:
-        print yellow("Skipping PostgreSQL installation.")
+        print yellow("Skipping Phase %s - PostgreSQL installation." % phase)
     else:
         if is_activated(phases, phase):
             print cyan("Beginning Phase %s - PostgreSQL installation." % phase)
             postgresql.install()
             pg_create_openerp_user()
-
+        else:
+            print yellow("skipping Phase %s - PostgreSQL installation." % phase)
+            
     phase += 1
     if is_activated(phases, phase):
         print cyan("Beginning Phase %s - Odoo prerequisites (wkhtml2pdf, node, ...)." % phase)
         openerp.install_odoo_html_prerequisites()  # wkhtml2pgdf, node ...
+    else:
+        print yellow("Skipping Phase %s - Odoo prerequisites (wkhtml2pdf, node, ...)." % phase)
 
     phase += 1
     if is_activated(phases, phase):
         print cyan("Beginning Phase %s - Odoo user creation." % phase)
         sys_create_openerp_user()
+    else:
+        print yellow("Skipping Phase %s - Odoo user creation." % phase)
+        
 
     phase += 1
     if is_activated(phases, phase):
@@ -600,17 +656,23 @@ def install_openerp_standalone_server(phases='', skip_postgres="False"):
         sys_create_backup_directory()
         sys_create_muppy_transactions_directory()
         sys_create_buffer_directory()
+    else:
+        print yellow("Skipping Phase %s - Creating /opt directory structure." % phase)
 
     phase += 1
     if is_activated(phases, phase):
         print cyan("Beginning Phase %s - Cloning appserver." % phase)
         openerp_clone_appserver()
-
+    else:
+        print yellow("Skipping Phase %s - Cloning appserver." % phase)
+        
     phase += 1
     if is_activated(phases, phase):
         print cyan("Beginning Phase %s - Appserver buildout." % phase)
         openerp_bootstrap_appserver()
-        
+    else:
+        print yellow("Skipping Phase %s - Appserver buildout." % phase)
+
     phase += 1
     if is_activated(phases, phase):
         print cyan("Beginning Phase %s - server process setup." % phase)
@@ -623,15 +685,17 @@ def install_openerp_standalone_server(phases='', skip_postgres="False"):
             supervisor.activate()
         else:
             print red("Error: Not implemented")
+    else:
+        print yellow("Skipping Phase %s - server process setup." % phase)
 
     print yellow("Rebooting")
     reboot()
 
 
 @task
-def install_openerp_application_server():
+def install_openerp_application_server(phases=''):
     """Install an OpenERP application server (without database)."""
-    install_openerp_standalone_server(phases='', skip_postgres="True")
+    install_openerp_standalone_server(phases=phases, skip_postgres="True")
 
 
 @task
@@ -672,7 +736,7 @@ def openerp_reinstall_appserver():
 
 @task
 def ssh(user='adm'):
-    """:adm | root | lxc -  Launch an SSH session into host with corresponding user. adm_user (default) or root_user ..."""
+    """:adm | root | lxc | any_user -  Launch an SSH session into host with corresponding user. adm_user (default) or root_user ..."""
     env.user = env.adm_user
     env.password = env.adm_password
 
@@ -686,8 +750,9 @@ def ssh(user='adm'):
         ssh_user = env.lxc.user_name
         ssh_password = env.lxc.user_password
     else:
-        print colors.red("ERROR: Unknown user %s !" % user)
-        sys.exit(1)
+        print colors.cyan("Trying to connect with user %s." % user)
+        ssh_user=user
+        ssh_password=None
 
     if ssh_password:
         print "Password= "+ blue("%s" % ssh_password)
@@ -695,7 +760,6 @@ def ssh(user='adm'):
         print colors.yellow("This user is passwordless")
 
     if env.key_filename:
-        pass
         subprocess.call(["ssh", "-i", env.key_filename[0], "-p", env.port, "%s@%s" % (ssh_user, env.host)])        
     else:    
         subprocess.call(["ssh", "-p %s" % (env.port,), "%s@%s" % (ssh_user, env.host)])

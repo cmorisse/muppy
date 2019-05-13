@@ -150,7 +150,7 @@ def setup(ignore_public_ip_test='False'):
             print red("ERROR: Current public IP is not in 'trusted_ips' list. Aborting.")
             sys.exit(1)
 
-    sudo("yes | ufw reset")
+    sudo("ufw --force reset")
     for trusted_ip in SecurityConfig.trusted_ips:
         sudo("ufw allow from %s" % trusted_ip)
 

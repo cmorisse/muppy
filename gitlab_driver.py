@@ -19,7 +19,11 @@ class GitlabRepository(Repository):
         self.gitlab_project = None
         
         if True:  # New API
-            self.gitlab_project = self.gitlab.projects.get("%s/%s" % (self.owner, self.name,))
+            try:
+                self.gitlab_project = self.gitlab.projects.get("%s/%s" % (self.owner, self.name,))
+            except:
+                print colors.red("Failed to access gitlab project: %s/%s !!!!! Check spelling." % (self.owner, self.name,))
+                raise
         else:
             projects = self.gitlab.projects.list(search=self.name)
             for project in projects:
@@ -43,7 +47,6 @@ class GitlabRepository(Repository):
 
         if not all_keys_list:
             return []
-#        keys_list = filter(None, [key['id'] if key['title'] == key_name else None for key in all_keys_list])
         keys_list = filter(None, [key.id if key.title == key_name else None for key in all_keys_list])
         return keys_list
 
@@ -86,10 +89,11 @@ class GitlabRepository(Repository):
         """
         # for update, we don't bother if key do not exists
         keys = self.search_deployment_key(key_name)
-        for key in keys:
-            self.delete_deployment_key(key)
-        return self.post_deployment_key(key_name, key_string)
-
+        if not keys:
+            keys = self.post_deployment_key(key_name, key_string)
+            return keys
+        return keys
+        
     @property
     def clone_command_line(self):
         if self.dvcs == 'hg':

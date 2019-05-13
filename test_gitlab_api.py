@@ -1,22 +1,28 @@
 import os
 import requests
+import sys
 
+user = os.environ.get('GITLAB_TOKEN_USER')
+password = os.environ.get('GITLAB_TOKEN')
 
-user = os.environ.get('AUDAXIS_GITLAB_USERNAME')
-password = os.environ.get('AUDAXIS_GITLAB_PASSWORD')
+API_URL = "https://gitlab.com/api/v4"
 
-API_URL = "https://gitlab.audaxis.com/api/v4"
-
+test = 'DSJ5jE-xhfLxYJ9HbwDi'
 
 HEADERS = {
     'PRIVATE-TOKEN': password,
 }
 
 
+URL = "%s/%s" % (API_URL, "projects/")
+resp = requests.get(URL, headers=HEADERS)
+print resp
+sys.exit(1)
+
+
 
 ### list keys of project 92
 
-URL = "%s/%s" % (API_URL, "projects/92/deploy_keys")
 resp = requests.get(URL, 
                     headers=HEADERS)
 

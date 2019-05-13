@@ -8,7 +8,8 @@ Description={{process_description}}
 Requires=After=postgresql.service
 {% endif %}
 [Service]
-ExecStart=/opt/openerp/{{customer_directory}}/appserver-{{appserver_id}}/bin/start_openerp --workers={{workers}} --max-cron-threads={{max_cron_threads}}
+{{environments}}
+ExecStart={{base_directory}}/{{customer_directory}}/{{appserver_directory}}/bin/start_openerp --workers={{workers}} --max-cron-threads={{max_cron_threads}}
 
 # Restart service after 1 sec if service crashes
 Restart=always
@@ -17,7 +18,7 @@ RestartSec=1
 # Output to syslog
 StandardOutput=syslog
 StandardError=syslog
-SyslogIdentifier=Odoo-Appserver-{{appserver_id}}
+SyslogIdentifier=Odoo_{{appserver_directory}}
 
 # Service is owned by adm_user
 User={{adm_user}}

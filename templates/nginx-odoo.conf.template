@@ -66,7 +66,7 @@ server {
         # client_max_body_size    200M;
 
         {% if False %}
-        # This is disabled since let's encrypt do it
+        # This section is disabled since "Let's encrypt" does it
         # Redirect all traffic to HTTPS
         # Uncomment to force HTTPS or leave to allow HTTP
         rewrite         ^/$ https://$host$request_uri? permanent;

@@ -369,7 +369,7 @@ def checkout_revision(refspec=None, launch_buildout='True'):
     with cd(env.openerp.repository.path):
         result = run(env.openerp.repository.get_pull_command_line(), quiet=True)
         if result.failed:
-            if not "You are not currently on a branch" in result.stdout:
+            if not ("You are not currently on a branch" in result.stdout or "es actuellement sur aucune branche" in result.stdout):
                 print red("Error: failed to checkout: %s with error message:" % refspec)
                 print yellow("%s" % result.stdout)
                 sys.exit(1)
@@ -655,7 +655,7 @@ def install_odoo_html_prerequisites():
     v = get_system_version()['os_version']
     
     if v == '18.04':
-        if env.openerp.appserver_version == "12":
+        if env.appserver_version == 12:
             # wkhtml2pdf        
             sudo('apt install -y fontconfig fontconfig-config fonts-dejavu-core libfontconfig1 libfontenc1 libxrender1 x11-common xfonts-75dpi xfonts-base xfonts-encodings xfonts-utils')
             sudo('wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.bionic_amd64.deb')

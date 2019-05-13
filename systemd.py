@@ -40,6 +40,7 @@ def parse_config(config_parser):
     SystemDConfig.workers = config_parser.has_option('systemd', 'workers') and config_parser.get('systemd', 'workers') or "4"
     SystemDConfig.max_cron_threads = config_parser.has_option('systemd', 'max_cron_threads') and config_parser.get('systemd', 'max_cron_threads') or "2"
     SystemDConfig.process_description = config_parser.has_option('systemd', 'process_description') and config_parser.get('systemd', 'process_description') or None
+    SystemDConfig.environment = config_parser.has_option('systemd', 'environment') and config_parser.get('systemd', 'environment').split("\n") or []
 
     return SystemDConfig
 
@@ -136,15 +137,20 @@ def activate():
     env_backup = (env.user, env.password,)
     env.user, env.password = env.root_user, env.root_password
     v = get_system_version()['os_version']
-    
+    if env.systemd.environment:
+        environments = '\n'.join(["Environment=%s" % an_env for an_env in env.systemd.environment])
+    else:
+        environments = ''
     rendering_context = {
-        "process_description": env.systemd.process_description or "%s/appserver-%s" % (env.customer_directory, env.appserver_id),
+        "process_description": env.systemd.process_description or "%s/%s" % (env.customer_directory, env.openerp.repository.destination_directory),
         "requires_postgres": env.db_host in ('localhost', '127.0.0.1',),
+        "base_directory": env.base_directory,
         "customer_directory": env.customer_directory,
-        "appserver_id": env.appserver_id,
+        "appserver_directory": env.openerp.repository.destination_directory,
         "workers": env.systemd.workers,
         "max_cron_threads": env.systemd.max_cron_threads,
-        "adm_user": env.adm_user
+        "adm_user": env.adm_user,
+        "environments": environments
         
     }
     unit_filename = "odoo_appserver_%s.service" % env.appserver_id
@@ -162,6 +168,7 @@ def activate():
                     #temp_dir='')
 
     sudo("systemctl enable %s" % unit_filename)
+    sudo("systemctl daemon-reload")
 
     (env.user, env.password,) = env_backup
     return True

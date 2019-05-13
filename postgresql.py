@@ -38,6 +38,13 @@ TEMPLATE_CFG_SECTION = """
 # The number of days each backup file is kept before it is deleted
 #backup_retention_period_in_days = 7
 
+# Databases prefix
+# If defined only databases whose name begin with this prefix will be backed up.
+# Only letters, numbers and _ are allowed. Value is used to build a like clouse
+# eg. databases_prefix = m3_  will generate LIKE 'm3_%'
+# Default is empty so the clause will be '%'
+#databases_prefix=
+
 # The cron values.
 # By default backup is launched at 2:00 every day
 #backup_cron_m_h_dom_mon_dow = "00 2 * * *"
@@ -49,10 +56,17 @@ TEMPLATE_CFG_SECTION = """
 #activate_dropbox_integration = False
 
 #
+# activate_s3_integration
+# Defines if backup script will update backup files to S3. 
+# Note that this option requires extra configuration steps
+#activate_s3_integration = True
+#s3_bucket_prefix = s3://tests.muppy-backups.inouk.ovh/blokart-shop
+
+#
 # target_scp_servers
-# If set with a valid muppy hostname that accept ssh passwordless connection,
-# backup script will scp each database backup file to this server.
-# target_scp_servers=10.0.0.2
+# If set with a valid muppy hostname list that accept ssh passwordless connection,
+# backup script will scp each database backup file to these servers.
+# target_scp_servers=10.0.0.2,10.0.0.2
 
 
 """
@@ -68,9 +82,15 @@ def parse_config(config_parser):
     PostgreSQLConfig.backup_root_directory = (config_parser.has_option('postgresql', 'backup_root_directory') and config_parser.get('postgresql', 'backup_root_directory')) or env.backup_directory
     PostgreSQLConfig.backup_email_recipients = (config_parser.has_option('postgresql', 'backup_email_recipients') and config_parser.get('postgresql', 'backup_email_recipients')) or ''
     PostgreSQLConfig.backup_retention_period_in_days = (config_parser.has_option('postgresql', 'backup_retention_period_in_days') and config_parser.get('postgresql', 'backup_retention_period_in_days')) or 7
+    PostgreSQLConfig.databases_prefix = (
+            config_parser.has_option('postgresql', 'databases_prefix') 
+        and config_parser.get('postgresql', 'databases_prefix')
+    ) or ''
     PostgreSQLConfig.backup_cron_m_h_dom_mon_dow = (config_parser.has_option('postgresql', 'backup_cron_m_h_dom_mon_dow') and config_parser.get('postgresql', 'backup_cron_m_h_dom_mon_dow')) or "00 2 * * *"
     PostgreSQLConfig.activate_dropbox_integration = (config_parser.has_option('postgresql', 'activate_dropbox_integration') and config_parser.get('postgresql', 'activate_dropbox_integration')) or False
-    PostgreSQLConfig.target_scp_servers = (config_parser.has_option('postgresql', 'target_scp_servers') and config_parser.get('postgresql', 'target_scp_servers')) or False
+    PostgreSQLConfig.activate_s3_integration = (config_parser.has_option('postgresql', 'activate_s3_integration') and config_parser.get('postgresql', 'activate_s3_integration')) or False
+    PostgreSQLConfig.s3_bucket_prefix = (config_parser.has_option('postgresql', 's3_bucket_prefix') and config_parser.get('postgresql', 's3_bucket_prefix')) or False
+    PostgreSQLConfig.target_scp_servers = (config_parser.has_option('postgresql', 'target_scp_servers') and config_parser.get('postgresql', 'target_scp_servers')) or None
 
     PostgreSQLConfig.backup_files_directory = os.path.join(PostgreSQLConfig.backup_root_directory, 'postgresql')
     PostgreSQLConfig.backup_scripts_directory = os.path.join(PostgreSQLConfig.backup_root_directory, 'scripts')
@@ -101,7 +121,7 @@ def get_databases_list(embedded=False):
     # 'psql -h localhost -U openerp --no-align --pset footer -t -c "SELECT datname FROM pg_database WHERE datistemplate = FALSE ;" postgres'
     env_backup = (env.user, env.password,)
     env.user, env.password = env.adm_user, env.adm_password
-    get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -p %s -U %s --no-align --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host, env.db_port, env.db_user)
+    get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -p %s -U %s --no-align --pset pager=off --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host or 'localhost', env.db_port, env.db_user)
     command = run(get_databases_cl, quiet=True)
 
     env.user, env.password = env_backup
@@ -112,11 +132,14 @@ def get_databases_list(embedded=False):
             for db in db_list:
                 print db
         return command.split('\r\n')
+    else:
+        print red("ERROR: command execution failed.")
+        sys.exit(1)
     return []
 
 def local_get_databases_list():
     """Returns list of existing databases on local database server"""
-    get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -U %s --no-align --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host, env.db_user)
+    get_databases_cl = 'export PGPASSWORD="%s" && psql -h %s -U %s --no-align --pset pager=off  --pset footer -t -c "SELECT datname FROM pg_database;" postgres' % ( env.db_password, env.db_host, env.db_user)
     command = local(get_databases_cl, capture=True)
     if command.succeeded:
         return command.split('\n')
@@ -136,11 +159,26 @@ def backup(database, backup_file_name=None):
     if not backup_file_name:
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         hostname = get_hostname()
-        backup_file_name = os.path.join(env.postgresql.backup_files_directory, "%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
+        database_backup_file_name = os.path.join(env.postgresql.backup_files_directory, "%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
+        filestore_backup_file_name = os.path.join(env.postgresql.backup_files_directory, "%s__%s__%s.filestore.tgz" % (timestamp, database, hostname,))
+    else:
+        # TODO: compute filestore
+        bfn_base, bfn_ext = os.path.splitext(backup_file_name)
+        if bfn_ext != '.pg_dump':
+            print red("Error: supplied backup file name must end with .pg_dump")
+            sys.exit(1)
+        database_backup_file_name = backup_file_name
+        filestore_backup_file_name = "%s.filestore.tgz" % (bfn_base, )
 
-    backup_command_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -p %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_port, env.db_user, backup_file_name, database,)
-    run(backup_command_line)
-
+    database_backup_command_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -p %s -U %s -f%s %s" % ( env.db_password, env.db_host or 'localhost', env.db_port, env.db_user, database_backup_file_name, database,)
+    run(database_backup_command_line)
+    
+    if exists('%s/%s' % (env.data_dir, database)):
+        filestore_backup_command_line = "tar -czf %s -C %s %s" % (filestore_backup_file_name, env.data_dir, database,)
+        run(filestore_backup_command_line)
+    else:
+        print yellow("WARING: Unable to backup filestore for database '%s'." % database)
+    
     env.user, env.password = env_backup
 
 
@@ -158,10 +196,26 @@ def local_backup(database, backup_file_name=None):
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         hostname = get_local_hostname()
         local('mkdir -p backups/%s' % hostname)
-        backup_file_name = os.path.join('backups/%s' % hostname, "%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
+        database_backup_file_name = os.path.join('backups/%s' % hostname, "%s__%s__%s.pg_dump" % (timestamp, database, hostname,))
+        filestore_backup_file_name = os.path.join('backups/%s' % hostname, "%s__%s__%s.filestore.tgz" % (timestamp, database, hostname,))
+        
+    else:
+        # TODO: compute filestore
+        filestore_backup_file_name = ''
+        print red("Not implemented")
+        sys.exit(1)
+        
 
-    backup_command_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -p %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_port, env.db_user, backup_file_name, database,)
+    database_backup_command_line = "export PGPASSWORD='%s' && pg_dump -Fc -h %s -p %s -U %s -f%s %s" % ( env.db_password, env.db_host, env.db_port, env.db_user, backup_file_name, database,)
     local(backup_command_line)
+
+    if exists('%s/%s' % (env.data_dir, database)):
+        filestore_backup_command_line = "tar -czf %s -C %s %s" % (filestore_backup_file_name, env.data_dir, database,)
+        local(filestore_backup_command_line)
+    else:
+        print yellow("WARING: Unable to backup filestore for database '%s'." % database)
+
+
 
     env.user, env.password = env_backup
 
@@ -202,32 +256,49 @@ def local_restore(backup_file_path, new_database_name=None, jobs=4):
 
 
 @task
-def restore(backup_file, new_database_name=None, jobs=4):
-    """:backup_file,[new_database_name] - Restore a database using specified backup file stored in {{backup_directory}}."""
+def restore(database_backup_file, new_database_name=None, jobs=4):
+    """:backup_file_pg_dump,[new_database_name] - Restore a database using specified backup file stored in {{backup_directory}}."""
     env_backup = (env.user, env.password,)
     env.user, env.password = env.adm_user, env.adm_password
-
-    if not backup_file:
+    dry_run = False
+    if not database_backup_file:
         print red("ERROR: missing required backup_file_name parameter.")
         exit(0)
 
-    backup_file_path = os.path.join(env.postgresql.backup_files_directory, backup_file)
+    backup_file_path = os.path.join(env.postgresql.backup_files_directory, database_backup_file)
     if not exists(backup_file_path):
         print red("ERROR: missing '%s' backup file." % backup_file_path)
         exit(0)
+    filestore_backup_file = "%s.filestore.tgz" % os.path.splitext(os.path.basename(database_backup_file))[0]
+    
 
-    (timestamp, database, host,) = backup_file.split('.')[0].split('__')
+    (timestamp, database, host,) = database_backup_file.split('.')[0].split('__')
 
     # use new database name if specified
     database = new_database_name or database
 
     if database in get_databases_list(embedded=True):
-        dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -U %s %s"\
-                              % (env.db_password, env.db_host, env.db_user, database,)
-        run(dropdb_command_line)
+        dropdb_command_line = "export PGPASSWORD='%s' && dropdb -h %s -p %s -U %s %s"\
+                              % (env.db_password, 
+                                 env.db_host or 'localhost', 
+                                 env.db_port, 
+                                 env.db_user, 
+                                 database,)
+        if dry_run:
+            print(dropdb_command_line)
+        else:
+            run(dropdb_command_line)
 
-    createdb_command_line = "export PGPASSWORD='%s' && createdb -h %s -U %s %s 'Restored by Muppy'" % (env.db_password, env.db_host, env.db_user, database,)
-    run(createdb_command_line)
+    createdb_command_line = "export PGPASSWORD='%s' && createdb -h %s -p %s -U %s %s 'Restored by Muppy'"\
+                            % (env.db_password, 
+                               env.db_host or 'localhost', 
+                               env.db_port, 
+                               env.db_user, 
+                               database,)
+    if dry_run:
+        print(createdb_command_line)
+    else:
+        run(createdb_command_line)
 
     try:
         jobs_number = int(jobs)
@@ -235,9 +306,34 @@ def restore(backup_file, new_database_name=None, jobs=4):
     except Exception:
         jobs_option = ''
 
-    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -U %s --no-owner %s -d %s %s" \
-                           % (env.db_password, env.db_host, env.db_user, jobs_option, database, backup_file_path,)
-    run(restore_command_line)
+    restore_command_line = "export PGPASSWORD='%s' && pg_restore -h %s -p %s -U %s --no-owner %s -d %s %s" \
+                           % (env.db_password, 
+                              env.db_host or 'localhost', 
+                              env.db_port, 
+                              env.db_user, 
+                              jobs_option, 
+                              database, 
+                              backup_file_path,)
+    if dry_run:
+        print(restore_command_line)
+    else:
+        run(restore_command_line)
+
+    # Now we restore filestore if any
+    filestore_backup_file_path = os.path.join(env.postgresql.backup_files_directory, filestore_backup_file)
+    if exists(filestore_backup_file_path):
+        create_db_datadir_cl = "mkdir -p %s/%s" % (env.data_dir, database,)
+        filestore_restore_command_line = "tar --strip 1 -xzf %s -C %s/%s" % (filestore_backup_file_path, env.data_dir, database,)
+        if dry_run:
+            print(create_db_datadir_cl)
+            print(filestore_restore_command_line)
+        else:
+            run(create_db_datadir_cl)
+            run(filestore_restore_command_line)
+
+    else:
+        print yellow("WARNING: No filestore found to restore (%s)." % filestore_backup_file_path)
+
 
     env.user, env.password = env_backup
     return
@@ -332,9 +428,15 @@ def install_backup_script():
         'backup_email_recipients': env.postgresql.backup_email_recipients,
         'backup_retention_period_in_days': env.postgresql.backup_retention_period_in_days,
         'activate_dropbox_integration': env.postgresql.activate_dropbox_integration,
-        'target_scp_servers': env.postgresql.target_scp_servers,
+        'activate_s3_integration': env.postgresql.activate_s3_integration,
+        's3_bucket_prefix': env.postgresql.s3_bucket_prefix,
+        'target_scp_servers': env.postgresql.target_scp_servers or '',
+        'odoo_data_dir': env.data_dir,
         'pg_user': env.db_user,
         'pg_password': env.db_password,
+        'pg_host': env.db_host,
+        'pg_port': env.db_port,
+        'databases_prefix': env.postgresql.databases_prefix
     }
 
     template_file = open('scripts/muppy_backup_all_postgresql_databases.sh')
@@ -363,10 +465,14 @@ def generate_config_template():
     print TEMPLATE_CFG_SECTION
 
 @task
-def install(version="default"):
+def install(version="default", client_only="False"):
     """:[version=9.3] Install postgresql specified version or the version defined in config file."""
     env_backup = (env.user, env.password,)
     env.user, env.password = env.root_user, env.root_password
+    
+    client_only = client_only.lower() in ['true', '1', 't', 'y', 'yes', 'oui', 'o', 'sure']
+
+    
     if version == 'default':
         version = PostgreSQLConfig.version
     
@@ -384,7 +490,10 @@ def install(version="default"):
             version = "10"
 
         print cyan("Installation PostgreSQL %s from PostgreSQL official repository." % version)
-        sudo("apt install -y postgresql-%s postgresql-contrib-%s" % (version, version,))
+        if client_only:
+            sudo("apt install -y postgresql-client-%s" % (version,))
+        else:
+            sudo("apt install -y postgresql-%s postgresql-contrib-%s" % (version, version,))
 
     else:
         if version == '9.4':

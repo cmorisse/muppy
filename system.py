@@ -138,6 +138,7 @@ def install_prerequisites():
         sudo('apt install -y libffi-dev')
         sudo('apt install -y libyaml-dev')
         sudo('apt install -y python3-dev python3-venv')
+        sudo('apt install -y postgresql-client-common')
         sudo('apt install -y bzr mercurial git')
         sudo('apt install -y curl htop vim tmux')
     
